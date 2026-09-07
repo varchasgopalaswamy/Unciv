@@ -4,11 +4,10 @@ import com.unciv.Constants
 import com.unciv.GUI
 import com.unciv.UncivGame
 import com.unciv.logic.MultiFilter
-import com.unciv.logic.civilization.Civilization
 import com.unciv.logic.civilization.PlayerType
-import com.unciv.logic.civilization.diplomacy.DiplomacyFlags
 import com.unciv.logic.civilization.managers.ImprovementFunctions
 import com.unciv.logic.map.mapunit.MapUnit
+import com.unciv.logic.map.mapunit.UnitSettlement
 import com.unciv.logic.map.tile.ImprovementBuildingProblem
 import com.unciv.logic.map.tile.RoadStatus
 import com.unciv.logic.map.tile.Tile
@@ -44,35 +43,20 @@ object UnitActionsFromUniques {
      * (no movement left, too close to another city).
      */
     internal fun getFoundCityAction(unit: MapUnit, tile: Tile): UnitAction? {
-        // FoundPuppetCity is to found a puppet city for modding.
-        val unique = UnitActionModifiers.getUsableUnitActionUniques(unit,
-            UniqueType.FoundCity).firstOrNull() ?: 
-            UnitActionModifiers.getUsableUnitActionUniques(unit,
-            UniqueType.FoundPuppetCity).firstOrNull() ?: return null
-
-        if (tile.isWater || tile.isImpassible()) return null
-        // Spain should still be able to build Conquistadors in a one city challenge - but can't settle them
-        if (unit.civ.isOneCityChallenger() && unit.civ.hasEverOwnedOriginalCapital) return null
+        val unique = UnitSettlement.foundingUnique(unit, tile) ?: return null
         val useFrequency = getUseFrequency(unit, unique, 80f)
 
-        if (!unit.hasMovement() || !tile.canBeSettled(unit.civ))
+        if (tile !== unit.currentTile || !UnitSettlement.canFoundCity(unit))
             return UnitAction(UnitActionType.FoundCity, useFrequency, action = null)
 
         val hasActionModifiers = unique.modifiers.any { it.type?.targetTypes?.contains(
             UniqueTarget.UnitActionModifier
         ) == true }
         val foundAction = {
-            if (unit.civ.playerType != PlayerType.AI)
-                UncivGame.Current.settings.addCompletedTutorialTask("Found city")
-            // Get the city to be able to change it into puppet, for modding.
-            val city = unit.civ.addCity(tile.position, unit)
-
-            if (hasActionModifiers) UnitActionModifiers.activateSideEffects(unit, unique)
-            else unit.destroy()
-            GUI.setUpdateWorldOnNextRender() // Set manually, since this could be triggered from the ConfirmPopup and not from the UnitActionsTable
-            // If unit has FoundPuppetCity make it into a puppet city.
-            if (unique.type == UniqueType.FoundPuppetCity) {
-                city.isPuppet = true
+            if (UnitSettlement.tryFoundCity(unit, confirmBreakPromise = true) != null) {
+                if (unit.civ.playerType != PlayerType.AI)
+                    UncivGame.Current.settings.addCompletedTutorialTask("Found city")
+                GUI.setUpdateWorldOnNextRender()
             }
         }
 
@@ -95,12 +79,12 @@ object UnitActionsFromUniques {
             associatedUnique = unique,
             action = {
                 // check if we would be breaking a promise
-                val leadersPromisedNotToSettleNear = getLeadersWePromisedNotToSettleNear(unit.civ, tile)
-                if (leadersPromisedNotToSettleNear == null)
+                val leadersPromisedNotToSettleNear = UnitSettlement.promisesBroken(unit)
+                if (leadersPromisedNotToSettleNear.isEmpty())
                     foundAction()
                 else {
                     // ask if we would be breaking a promise
-                    val text = "Do you want to break your promise to [$leadersPromisedNotToSettleNear]?"
+                    val text = "Do you want to break your promise to [${leadersPromisedNotToSettleNear.joinToString(", ")}]?"
                     ConfirmPopup(
                         GUI.getWorldScreen(),
                         text,
@@ -110,27 +94,6 @@ object UnitActionsFromUniques {
                 }
             }.takeIf { UnitActionModifiers.canActivateSideEffects(unit, unique) }
         )
-    }
-
-    /**
-     * Checks whether a civ founding a city on a certain tile would break a promise.
-     * @param civInfo The civilization trying to found a city
-     * @param tile The tile where the new city would go
-     * @return null if no promises broken, else a String listing the leader(s) we would p* off.
-     */
-    @Readonly
-    private fun getLeadersWePromisedNotToSettleNear(civInfo: Civilization, tile: Tile): String? {
-        val leadersWePromisedNotToSettleNear = HashSet<String>()
-        for (otherCiv in civInfo.getKnownCivs().filter { it.isMajorCiv() && !civInfo.isAtWarWith(it) }) {
-            val diplomacyManager = otherCiv.getDiplomacyManager(civInfo)!!
-            if (diplomacyManager.hasFlag(DiplomacyFlags.AgreedToNotSettleNearUs)) {
-                val citiesWithin6Tiles = otherCiv.cities
-                    .filter { it.getCenterTile().aerialDistanceTo(tile) <= 6 }
-                    .filter { otherCiv.hasExplored(it.getCenterTile()) }
-                if (citiesWithin6Tiles.isNotEmpty()) leadersWePromisedNotToSettleNear += otherCiv.getLeaderDisplayName()
-            }
-        }
-        return if(leadersWePromisedNotToSettleNear.isEmpty()) null else leadersWePromisedNotToSettleNear.joinToString(", ")
     }
 
     internal fun getSetupActions(unit: MapUnit, tile: Tile): Sequence<UnitAction> {

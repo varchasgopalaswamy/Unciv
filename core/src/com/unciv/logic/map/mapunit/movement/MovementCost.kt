@@ -20,12 +20,13 @@ object MovementCost {
         to: Tile,
         considerZoneOfControl: Boolean = true,
         includeEscortUnit: Boolean = true,
+        forPlanning: Boolean = false,
     ): Float = timeThis("MovementCost.getMovementCostBetweenAdjacentTilesEscort")  {
         val movementCost = if (includeEscortUnit && unit.isEscorting()) {
-            maxOf(getMovementCostBetweenAdjacentTiles(unit, from, to, considerZoneOfControl),
-                getMovementCostBetweenAdjacentTiles(unit.getOtherEscortUnit()!!, from, to, considerZoneOfControl))
+            maxOf(getMovementCostBetweenAdjacentTiles(unit, from, to, considerZoneOfControl, forPlanning),
+                getMovementCostBetweenAdjacentTiles(unit.getOtherEscortUnit()!!, from, to, considerZoneOfControl, forPlanning))
         } else {
-            getMovementCostBetweenAdjacentTiles(unit, from, to, considerZoneOfControl)
+            getMovementCostBetweenAdjacentTiles(unit, from, to, considerZoneOfControl, forPlanning)
         }
         if (movementCost < 0) throw Exception("Got a negative movement cost?!")
         return movementCost
@@ -42,8 +43,11 @@ object MovementCost {
         from: Tile,
         to: Tile,
         considerZoneOfControl: Boolean = true,
+        forPlanning: Boolean = false,
     ): Float {
         val civ = unit.civ
+
+        if (forPlanning && (!from.isExplored(civ) || !to.isExplored(civ))) return 1f
 
         if (unit.cache.cannotMove) return 100f
 
@@ -52,7 +56,7 @@ object MovementCost {
             else unit.cache.costToEmbark ?: 100f
 
         // If the movement is affected by a Zone of Control, all movement points are expended
-        if (considerZoneOfControl && isMovementAffectedByZoneOfControl(unit, from, to))
+        if (considerZoneOfControl && isMovementAffectedByZoneOfControl(unit, from, to, forPlanning))
             return 100f
 
         // land units will still spend all movement points to embark even with this unique
@@ -164,7 +168,7 @@ object MovementCost {
 
     /** Returns whether the movement between the adjacent tiles [from] and [to] is affected by Zone of Control */
     @Readonly
-    private fun isMovementAffectedByZoneOfControl(unit: MapUnit, from: Tile, to: Tile): Boolean {
+    private fun isMovementAffectedByZoneOfControl(unit: MapUnit, from: Tile, to: Tile, forPlanning: Boolean): Boolean {
         // Sources:
         // - https://civilization.fandom.com/wiki/Zone_of_control_(Civ5)
         // - https://forums.civfanatics.com/resources/understanding-the-zone-of-control-vanilla.25582/
@@ -181,7 +185,7 @@ object MovementCost {
         // these two tiles can perhaps be optimized. Using a hex-math-based "commonAdjacentTiles"
         // function is surprisingly less efficient than the current neighbor-intersection approach.
         // See #4085 for more details.
-        if (!anyTilesExertingZoneOfControl(unit, from, to))
+        if (!anyTilesExertingZoneOfControl(unit, from, to, forPlanning))
             return false
 
         // Even though this is a very fast check, we perform it last. This is because very few units
@@ -194,13 +198,15 @@ object MovementCost {
     }
 
     @Readonly
-    private fun anyTilesExertingZoneOfControl(unit: MapUnit, from: Tile, to:Tile): Boolean {
+    private fun anyTilesExertingZoneOfControl(unit: MapUnit, from: Tile, to:Tile, forPlanning: Boolean): Boolean {
         for (neighbor in from.neighbors) {
+            if (forPlanning && !neighbor.isExplored(unit.civ)) continue
             if (neighbor.isCityCenter()) {
                 if (neighbor.aerialDistanceTo(to) == 1
                     && unit.civ.isAtWarWith(neighbor.getOwner()!!))
                         return true
             } else if (neighbor.militaryUnit != null) {
+                if (forPlanning && !neighbor.militaryUnit!!.isVisibleTo(unit.civ)) continue
                 if (neighbor.aerialDistanceTo(to) == 1
                     && (neighbor.militaryUnit!!.type.isWaterUnit() || (unit.type.isLandUnit() && !neighbor.militaryUnit!!.isEmbarked()))
                     && unit.civ.isAtWarWith(neighbor.militaryUnit!!.civ))

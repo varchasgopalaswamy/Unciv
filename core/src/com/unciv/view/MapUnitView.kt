@@ -1,6 +1,8 @@
 package com.unciv.view
 
 import com.unciv.logic.civilization.Civilization
+import com.unciv.logic.civilization.PlayerUnitOperations
+import com.unciv.logic.civilization.PlayerOperations
 import com.unciv.logic.map.MapPathing
 import com.unciv.logic.map.mapunit.MapUnit
 import com.unciv.models.ruleset.unique.UniqueType
@@ -30,13 +32,20 @@ class MapUnitView internal constructor(
     /** `true` if [unit] was removed from its tile (captured, killed) since being selected. */
     @Readonly fun hasDisappeared(): Boolean = unit !in unit.getTile().getUnits()
 
-    @Readonly fun canReach(tileView: TileView): Boolean = unit.movement.canReach(tileView.unwrap())
+    @Readonly fun canReach(tileView: TileView): Boolean =
+        getCurrentTurnMove(tileView) != null || unit.movement.canReach(tileView.unwrap())
     @Readonly fun getShortestPath(tileView: TileView): List<TileView> =
-        unit.movement.getShortestPath(tileView.unwrap()).map { gameView.tileMapView.getTile(it) }
+        if (getCurrentTurnMove(tileView) != null) listOf(tileView)
+        else unit.movement.getShortestPath(tileView.unwrap()).map { gameView.tileMapView.getTile(it) }
+
+    @Readonly
+    fun getCurrentTurnMove(tileView: TileView): PlayerUnitOperations.MovePreview? =
+        PlayerUnitOperations(viewer, spectatorMode).moves(unit).firstOrNull { it.destination === tileView.unwrap() }
     @Readonly fun canSwapTo(tileView: TileView): Boolean = unit.movement.canUnitSwapTo(tileView.unwrap())
     // All "prepare and then choose tile" logic is actually UI stuff, and should be migrated out of logic layer
     @Readonly fun isPreparingAirSweep(): Boolean = unit.isPreparingAirSweep()
-    @Readonly fun canMoveTo(tileView: TileView): Boolean = unit.movement.canMoveTo(tileView.unwrap())
+    @Readonly fun canMoveTo(tileView: TileView): Boolean = unit.movement.canMoveTo(
+        tileView.unwrap(), forPlanning = PlayerUnitOperations(viewer, spectatorMode).supportsMovement(unit))
     // This reads as "logic leaking through to UI"
     @Readonly fun isUnknownTileWeShouldAssumeToBePassable(tileView: TileView): Boolean =
         unit.movement.isUnknownTileWeShouldAssumeToBePassable(tileView.unwrap())
@@ -46,8 +55,12 @@ class MapUnitView internal constructor(
     @Readonly fun cannotMove(): Boolean = unit.cache.cannotMove
     @Readonly fun isAutomatingRoadConnection(): Boolean = unit.isAutomatingRoadConnection()
     @Readonly fun rulesetHasRoadImprovement(): Boolean = unit.currentTile.ruleset.roadImprovement != null
-    @Readonly fun getReachableTilesInCurrentTurn(): List<TileView> =
-        unit.movement.getReachableTilesInCurrentTurn().map { gameView.tileMapView.getTile(it) }.toList()
+    @Readonly fun getReachableTilesInCurrentTurn(): List<TileView> {
+        val operations = PlayerUnitOperations(viewer, spectatorMode)
+        return if (operations.supportsMovement(unit))
+            operations.moves(unit).map { gameView.tileMapView.getTile(it.destination) }
+        else unit.movement.getReachableTilesInCurrentTurn().map { gameView.tileMapView.getTile(it) }.toList()
+    }
     @Readonly fun getUnitSwappableTiles(): List<TileView> =
         unit.movement.getUnitSwappableTiles().map { gameView.tileMapView.getTile(it) }.toList()
     @Readonly fun getValidRoadConnectionTiles(): List<TileView> =
@@ -66,6 +79,9 @@ class MapUnitView internal constructor(
     }
 
     // Actions
+    fun tryMoveThisTurn(tileView: TileView): Boolean =
+        PlayerUnitOperations(viewer, spectatorMode).tryMove(unit, tileView.unwrap())
+
     fun trySwapMoveToTile(tileView: TileView, keepEscorting: Boolean = false): Boolean {
         unit.movement.swapMoveToTile(tileView.unwrap(), keepEscorting)
         return true
@@ -75,6 +91,10 @@ class MapUnitView internal constructor(
         return true
     }
     fun tryHeadTowards(tileView: TileView): Boolean {
+        val operations = PlayerUnitOperations(viewer, spectatorMode)
+        if (!PlayerOperations(viewer, spectatorMode).canAct() || !operations.owns(unit)) return false
+        if (getCurrentTurnMove(tileView) != null)
+            return operations.tryMove(unit, tileView.unwrap())
         unit.movement.headTowards(tileView.unwrap())
         return true
     }

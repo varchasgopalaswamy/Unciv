@@ -300,9 +300,11 @@ class WorldMapHolder(
             // then it might change until we get to the getTileToMoveTo, so we just try/catch it
             val tileToMoveTo: Tile
             var pathToTile: List<Tile>? = null
+            val currentTurnMove = selectedUnitView.getCurrentTurnMove(targetTileView)
             try {
-                tileToMoveTo = selectedUnit.movement.getTileToMoveToThisTurn(targetTile)
-                if (!selectedUnitView.isAirUnit() && !selectedUnitView.isPreparingParadrop())
+                tileToMoveTo = currentTurnMove?.destination ?: selectedUnit.movement.getTileToMoveToThisTurn(targetTile)
+                if (currentTurnMove != null) pathToTile = currentTurnMove.path
+                else if (!selectedUnitView.isAirUnit() && !selectedUnitView.isPreparingParadrop())
                     pathToTile = selectedUnit.movement.getDistanceToTiles().getPathToTile(tileToMoveTo)
             } catch (ex: Exception) {
                 when (ex) {
@@ -328,7 +330,9 @@ class WorldMapHolder(
                     // but it's so rare and edge-case-y that ignoring its failure is actually acceptable, hence the empty catch
                     val tileMapView = worldScreen.selectedGameView.tileMapView
                     val previousTileView = selectedUnitView.getTile()
-                    selectedUnit.movement.moveToTile(tileToMoveTo)
+                    if (currentTurnMove != null) {
+                        if (!selectedUnitView.tryMoveThisTurn(targetTileView)) return@launchOnGLThread
+                    } else selectedUnit.movement.moveToTile(tileToMoveTo)
 
                     // If you try to send a unit to a tile that it can't even get nearer to, then this is actualy a dud
                     if (previousTileView == selectedUnitView.getTile()){
@@ -440,12 +444,16 @@ class WorldMapHolder(
             val unitToTurnsToTile = HashMap<MapUnitView, Int>()
             for (unitView in selectedUnits) {
                 val shortestPath = ArrayList<TileView>()
+                val currentTurnMove = unitView.getCurrentTurnMove(tileView)
                 val turnsToGetThere = if (unitView.isAirUnit()) {
                     if (unitView.canReach(tileView)) 1
                     else 0
                 } else if (unitView.isPreparingParadrop()) {
                     if (unitView.canReach(tileView)) 1
                     else 0
+                } else if (currentTurnMove != null) {
+                    shortestPath.addAll(currentTurnMove.path.map { worldScreen.selectedGameView.tileMapView.getTile(it) })
+                    1
                 } else {
                     // this is the most time-consuming call
                     shortestPath.addAll(unitView.getShortestPath(tileView))
