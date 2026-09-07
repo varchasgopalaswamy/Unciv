@@ -675,7 +675,9 @@ class AlertPopup(
     //endregion
 
     override fun close() {
-        viewingCiv.popupAlerts.remove(popupAlert)
+        if (popupAlert.type in com.unciv.logic.civilization.PlayerOperations.informationalAlerts) {
+            com.unciv.logic.civilization.PlayerOperations(viewingCiv).tryAcknowledgeAlert(popupAlert)
+        } else viewingCiv.popupAlerts.remove(popupAlert)
         worldScreen.shouldUpdate = true
         super.close()
     }

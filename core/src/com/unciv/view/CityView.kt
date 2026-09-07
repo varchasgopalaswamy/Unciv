@@ -195,8 +195,7 @@ class CityView(city: City,
     fun updateCityStats() = city.cityStats.update()
     fun tryRenameCity(name: String): Boolean {
         if (!canChangeState()) return false
-        city.name = name
-        return true
+        return com.unciv.logic.civilization.PlayerOperations(viewer, spectatorMode).tryRenameCity(city, name)
     }
     fun tryAnnexCity(): Boolean {
         if (!canChangeState()) return false

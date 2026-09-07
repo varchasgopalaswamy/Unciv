@@ -2,6 +2,7 @@ package com.unciv.view
 
 import com.unciv.Constants
 import com.unciv.logic.city.City
+import com.unciv.logic.civilization.PlayerTurnRequirements
 import com.unciv.logic.civilization.Civilization
 import com.unciv.logic.civilization.managers.ReligionState
 import com.unciv.logic.map.tile.ImprovementBuildingProblem
@@ -29,6 +30,11 @@ class CivView(civ: Civilization,
     @Readonly fun getTradeView(otherCiv: ForeignCivView): TradeView = TradeView(civ, otherCiv.unwrap(), gameView)
 
     // Data retrieval
+    @Readonly fun hasPendingTurnRequirement(kind: PlayerTurnRequirements.Kind): Boolean =
+        PlayerTurnRequirements.isPending(civ, kind)
+    @Readonly fun cityNeedingConstruction(): CityView? =
+        PlayerTurnRequirements.cityNeedingConstruction(civ)?.let { getCity(it) }
+
     @Readonly fun hasStatToBuy(stat: Stat, price: Int): Boolean = civ.hasStatToBuy(stat, price)
 
     @Readonly fun canSeeTile(tileView: TileView): Boolean = tileView.unwrap().isVisible(civ)
@@ -122,7 +128,8 @@ class CivView(civ: Civilization,
         civ.cities.forEach { it.cityStats.update() }
         return true
     }
-    fun tryDismissPolicyPicker(): Boolean { civ.policies.shouldOpenPolicyPicker = false; return true }
+    fun tryDismissPolicyPicker(): Boolean =
+        com.unciv.logic.civilization.PlayerOperations(civ, spectatorMode).tryDismissPolicyPicker()
     fun tryDismissMoveSpies(): Boolean { civ.espionageManager.dismissedShouldMoveSpies = true; return true }
     fun tryMarkMovedAutomatedUnits(): Boolean { civ.hasMovedAutomatedUnits = true; return true }
     fun tryAutomateAllUnits(): Boolean { civ.units.getCivUnits().forEach { it.doAction() }; return true }

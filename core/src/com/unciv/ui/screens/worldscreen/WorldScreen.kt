@@ -478,7 +478,10 @@ class WorldScreen(
     }
 
     @Readonly
-    internal fun hasPendingFreeGreatPerson() = viewingCiv.greatPeople.freeGreatPeople > 0
+    internal fun hasPendingFreeGreatPerson() =
+        com.unciv.logic.civilization.PlayerTurnRequirements.isPending(
+            viewingCiv, com.unciv.logic.civilization.PlayerTurnRequirements.Kind.FreeGreatPerson
+        )
 
     internal fun openGreatPersonPicker() {
         deferFreeGreatPersonPicker = false

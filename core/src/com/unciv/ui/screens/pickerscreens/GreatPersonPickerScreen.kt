@@ -72,7 +72,8 @@ class GreatPersonPickerScreen(val worldScreen: WorldScreen, val civInfo: Civiliz
             }
             return
         }
-        if (civInfo.greatPeople.chooseFreeGreatPerson(chosenUnit.name) == null) {
+        if (!worldScreen.canChangeState) return
+        if (com.unciv.logic.civilization.PlayerOperations(civInfo).tryChooseFreeGreatPerson(chosenUnit.name) == null) {
             descriptionLabel.setText("No space to place this unit".tr())
             allowClose()
             return

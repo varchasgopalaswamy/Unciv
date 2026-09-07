@@ -126,15 +126,14 @@ class TechPickerScreen(
 
 
     private fun tryExit() {
+        val operations = com.unciv.logic.civilization.PlayerOperations(civInfo)
         if (freeTechPick) {
             val freeTech = selectedTech!!.name
             // More evil people fast-clicking to cheat - #4977
             if (!researchableTechs.contains(freeTech)) return
-            civTech.getFreeTechnology(selectedTech!!.name)
+            if (!operations.tryChooseFreeTechnology(freeTech)) return
         }
-        else civTech.techsToResearch = tempTechsToResearch
-
-        civTech.updateResearchProgress()
+        else if (!operations.trySetResearchQueue(tempTechsToResearch)) return
 
         game.settings.addCompletedTutorialTask("Pick technology")
 

@@ -77,13 +77,7 @@ private enum class PolicyColors(
 
 @Readonly
 private fun Policy.isPickable(viewingCiv: Civilization, canChangeState: Boolean) =
-    viewingCiv.isCurrentPlayer()
-        && canChangeState
-        && !viewingCiv.isDefeated()
-        && !viewingCiv.policies.isAdopted(this.name)
-        && policyBranchType != PolicyBranchType.BranchComplete
-        && viewingCiv.policies.isAdoptable(this)
-        && viewingCiv.policies.canAdoptPolicy()
+    canChangeState && com.unciv.logic.civilization.PlayerOperations(viewingCiv).canAdoptPolicy(name)
 
 private class PolicyButton(viewingCiv: Civilization, canChangeState: Boolean, val policy: Policy, size: Float = 30f) : BorderedTable(
     path = "PolicyScreen/PolicyButton",
@@ -645,7 +639,8 @@ class PolicyPickerScreen(
                     this,
                     "Are you sure you want to adopt [${branch.name}]?",
                     "Adopt", true, action = {
-                        viewingCiv.policies.adopt(branch, false)
+                        if (!com.unciv.logic.civilization.PlayerOperations(viewingCiv).tryAdoptPolicy(branch.name))
+                            return@ConfirmPopup
                         game.replaceCurrentScreen{ recreate() }
                     }
                 ).open(force = true)
@@ -671,7 +666,7 @@ class PolicyPickerScreen(
         // Don't accept more clicking anywhere
         Concurrency.run {
             InputDisabling.withInputDisabled {
-                viewingCiv.policies.adopt(policy)
+                com.unciv.logic.civilization.PlayerOperations(viewingCiv).tryAdoptPolicy(policy.name)
             }
             Concurrency.runOnGLThread {
                 // If we've moved to another screen in the meantime (great person pick, victory screen) ignore this

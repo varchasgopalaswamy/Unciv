@@ -2,6 +2,7 @@ package com.unciv.ui.screens.worldscreen.status
 
 import com.badlogic.gdx.graphics.Color
 import com.unciv.Constants
+import com.unciv.logic.civilization.PlayerTurnRequirements.Kind
 import com.unciv.models.Counter
 import com.unciv.models.ruleset.BeliefType
 import com.unciv.ui.components.extensions.disable
@@ -66,7 +67,7 @@ enum class NextTurnAction(protected val text: String, val color: Color) {
     },
     PickTech("Pick a tech", Color.SKY) {
         override fun isChoice(worldScreen: WorldScreen) =
-            worldScreen.selectedGameView.civView.shouldOpenTechPicker()
+            worldScreen.selectedGameView.civView.hasPendingTurnRequirement(Kind.Research)
         override fun action(worldScreen: WorldScreen) =
             worldScreen.game.pushScreen{
                 TechPickerScreen(worldScreen.selectedGameView.civView.getCiv(), null)
@@ -74,7 +75,7 @@ enum class NextTurnAction(protected val text: String, val color: Color) {
     },
     PickPolicy("Pick a policy", Color.VIOLET) {
         override fun isChoice(worldScreen: WorldScreen) =
-            worldScreen.selectedGameView.civView.shouldShowPolicyPicker()
+            worldScreen.selectedGameView.civView.hasPendingTurnRequirement(Kind.Policy)
         override fun action(worldScreen: WorldScreen) {
             worldScreen.game.pushScreen { PolicyPickerScreen(worldScreen.selectedCiv, worldScreen.canChangeState) }
             worldScreen.selectedGameView.civView.tryDismissPolicyPicker()
@@ -82,7 +83,7 @@ enum class NextTurnAction(protected val text: String, val color: Color) {
     },
     MoveSpies("Move Spies", Color.WHITE) {
         override fun isChoice(worldScreen: WorldScreen) =
-                worldScreen.gameInfo.isEspionageEnabled() && worldScreen.selectedGameView.civView.shouldShowMoveSpies()
+            worldScreen.selectedGameView.civView.hasPendingTurnRequirement(Kind.MoveSpies)
         override fun action(worldScreen: WorldScreen) {
             worldScreen.game.pushScreen { EspionageOverviewScreen(worldScreen.selectedCiv, worldScreen) }
             worldScreen.selectedGameView.civView.tryDismissMoveSpies()
@@ -90,37 +91,37 @@ enum class NextTurnAction(protected val text: String, val color: Color) {
     },
     FoundPantheon("Found Pantheon", Color.valueOf(BeliefType.Pantheon.color)) {
         override fun isChoice(worldScreen: WorldScreen) =
-            worldScreen.selectedGameView.civView.canFoundPantheon()
+            worldScreen.selectedGameView.civView.hasPendingTurnRequirement(Kind.FoundPantheon)
         override fun action(worldScreen: WorldScreen) =
             worldScreen.game.pushScreen { PantheonPickerScreen(worldScreen.selectedGameView.civView.getCiv()) }.let {  }
     },
     ExpandPantheon("Expand Pantheon", Color.valueOf(BeliefType.Pantheon.color)) {
         override fun isChoice(worldScreen: WorldScreen) =
-            worldScreen.selectedGameView.civView.canExpandPantheon()
+            worldScreen.selectedGameView.civView.hasPendingTurnRequirement(Kind.ExpandPantheon)
         override fun action(worldScreen: WorldScreen) =
             worldScreen.game.pushScreen { PantheonPickerScreen(worldScreen.selectedGameView.civView.getCiv()) }.let {  }
     },
     FoundReligion("Found Religion", Color.valueOf(BeliefType.Founder.color)) {
         override fun isChoice(worldScreen: WorldScreen) =
-            worldScreen.selectedGameView.civView.isFoundingReligion()
+            worldScreen.selectedGameView.civView.hasPendingTurnRequirement(Kind.FoundReligion)
         override fun action(worldScreen: WorldScreen) =
             openReligionPicker(worldScreen, true, worldScreen.selectedGameView.civView.getBeliefsToChooseAtFounding()).let {  }
     },
     EnhanceReligion("Enhance a Religion", Color.valueOf(BeliefType.Enhancer.color)) {
         override fun isChoice(worldScreen: WorldScreen) =
-            worldScreen.selectedGameView.civView.isEnhancingReligion()
+            worldScreen.selectedGameView.civView.hasPendingTurnRequirement(Kind.EnhanceReligion)
         override fun action(worldScreen: WorldScreen) =
             openReligionPicker(worldScreen, false, worldScreen.selectedGameView.civView.getBeliefsToChooseAtEnhancing()).let {  }
     },
     ReformReligion("Reform Religion", Color.valueOf(BeliefType.Enhancer.color)) {
         override fun isChoice(worldScreen: WorldScreen) =
-            worldScreen.selectedGameView.civView.hasFreeBeliefs()
+            worldScreen.selectedGameView.civView.hasPendingTurnRequirement(Kind.ReformReligion)
         override fun action(worldScreen: WorldScreen) =
             openReligionPicker(worldScreen, false, worldScreen.selectedGameView.civView.freeBeliefsAsEnums()).let {  }
     },
     WorldCongressVote("Vote for World Leader", Color.MAROON) {
         override fun isChoice(worldScreen: WorldScreen) =
-            worldScreen.selectedGameView.civView.mayVoteForDiplomaticVictory()
+            worldScreen.selectedGameView.civView.hasPendingTurnRequirement(Kind.DiplomaticVote)
         override fun action(worldScreen: WorldScreen) =
             worldScreen.game.pushScreen { DiplomaticVotePickerScreen(worldScreen.selectedGameView.civView.getCiv()) }.let {  }
     },
@@ -158,10 +159,7 @@ enum class NextTurnAction(protected val text: String, val color: Color) {
         // Readability helpers to allow concise enum instances
         @Readonly
         private fun getCityWithNoProductionSet(worldScreen: WorldScreen) =
-            worldScreen.selectedGameView.civView.cities()
-            .firstOrNull {
-                !it.isPuppet() && it.currentConstructionName().isEmpty()
-            }
+            worldScreen.selectedGameView.civView.cityNeedingConstruction()
 
         private fun openReligionPicker(
                 worldScreen: WorldScreen,
