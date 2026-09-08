@@ -5,10 +5,10 @@ import com.unciv.GUI
 import com.unciv.UncivGame
 import com.unciv.logic.MultiFilter
 import com.unciv.logic.civilization.PlayerType
-import com.unciv.logic.civilization.managers.ImprovementFunctions
 import com.unciv.logic.map.mapunit.MapUnit
 import com.unciv.logic.map.mapunit.UnitSettlement
-import com.unciv.logic.map.tile.ImprovementBuildingProblem
+import com.unciv.logic.map.mapunit.UnitWorkerRepair
+import com.unciv.logic.map.mapunit.WorkerImprovementPicker
 import com.unciv.logic.map.tile.RoadStatus
 import com.unciv.logic.map.tile.Tile
 import com.unciv.models.Counter
@@ -441,17 +441,7 @@ object UnitActionsFromUniques {
         val unique = unit.getMatchingUniques(UniqueType.BuildImprovements).firstOrNull()
             ?: return emptySequence()
 
-        val couldConstruct = unit.hasMovement()
-            && !tile.isCityCenter()
-            && unit.civ.gameInfo.ruleset.tileImprovements.values.any {
-            ImprovementPickerScreen.canReport(
-                tile.improvementFunctions.getImprovementBuildingProblems(
-                    it,
-                    unit.cache.state
-                ).toSet()
-            )
-                && unit.canBuildImprovement(it)
-        }
+        val couldConstruct = tile === unit.currentTile && WorkerImprovementPicker.canOpen(unit)
         val useFrequency = getUseFrequency(unit, unique, 85f)
 
         return sequenceOf(UnitAction(UnitActionType.ConstructImprovement, useFrequency,
@@ -466,55 +456,22 @@ object UnitActionsFromUniques {
     }
 
     @Readonly
-    internal fun getRepairTurns(unit: MapUnit): Int {
-        val tile = unit.currentTile
-        if (!tile.isPillaged()) return 0
-        if (tile.improvementInProgress == Constants.repair) return tile.turnsToImprovement
-        val repairTurns = tile.ruleset.tileImprovements[Constants.repair]!!.getTurnsToBuild(unit.civ, unit)
-
-        val pillagedImprovement = tile.getImprovementToRepair()!!
-        val turnsToBuild = pillagedImprovement.getTurnsToBuild(unit.civ, unit)
-        // cap repair to number of turns to build original improvement
-        return repairTurns.coerceAtMost(turnsToBuild)
-    }
+    internal fun getRepairTurns(unit: MapUnit): Int = UnitWorkerRepair.turns(unit)
 
     internal fun getRepairActions(unit: MapUnit, tile: Tile) =
         sequenceOf(getRepairAction(unit)).filterNotNull()
 
     // Public - used in WorkerAutomation
-    fun getRepairAction(unit: MapUnit) : UnitAction? {
-        if (!unit.currentTile.ruleset.tileImprovements.containsKey(Constants.repair)) return null
-        if (!unit.cache.hasUniqueToBuildImprovements) return null
-        if (unit.isEmbarked()) return null
-        val tile = unit.getTile()
-        if (tile.isCityCenter()) return null
-        if (!tile.isPillaged()) return null
-        val uniques = unit.getMatchingUniques(UniqueType.BuildImprovements)
-        val improvement = tile.getImprovementToRepair()!!
-        val civ = unit.civ
-        if (!uniques.any { unique ->
-            // Engage the MultiFilter on the entire filter, prior to checking the individual filters
-            MultiFilter.multiFilter(unique.params[0], {
-                improvement.matchesFilter(it, tile.stateThisTile) || tile.matchesTerrainFilter(it, civ)
-            })
-        }) return null
-
-        val couldConstruct = unit.hasMovement()
-            && !tile.isCityCenter() && tile.improvementInProgress != Constants.repair
-            && !tile.isEnemyTerritory(unit.civ)
-                // Are there any other improvement building problems that should block repair?
-            && ImprovementFunctions.getImprovementBuildingProblems(unit.currentTile.getImprovementToRepair()!!, GameContext(civInfo = unit.civ, unit = unit, tile = tile))
-                .none { it == ImprovementBuildingProblem.OutsideBorders }
-
-        val turnsToBuild = getRepairTurns(unit)
-        val useFrequency = getUseFrequency(unit, uniques.first(), 90f)
-
-        return UnitAction(UnitActionType.Repair, useFrequency,
+    fun getRepairAction(unit: MapUnit): UnitAction? {
+        if (!UnitWorkerRepair.isShown(unit)) return null
+        val unique = unit.getMatchingUniques(UniqueType.BuildImprovements).first()
+        val turnsToBuild = UnitWorkerRepair.turns(unit)
+        return UnitAction(UnitActionType.Repair, getUseFrequency(unit, unique, 90f),
             title = "${UnitActionType.Repair} [${unit.currentTile.getImprovementToRepair()!!.name}] - [${turnsToBuild}${Fonts.turn}]",
             action = {
-                tile.queueImprovement(Constants.repair, turnsToBuild)
-                unit.action = null
-            }.takeIf { couldConstruct }
+                UnitWorkerRepair.tryRepair(unit)
+                Unit
+            }.takeIf { UnitWorkerRepair.canRepair(unit) }
         )
     }
 }

@@ -95,6 +95,7 @@ class PlayerOperations(private val civ: Civilization, private val spectatorMode:
     fun tryQueueConstruction(city: City, name: String): Boolean = synchronized(civ.gameInfo) {
         if (!canAct() || name !in queueableConstructions(city)) return@synchronized false
         city.cityConstructions.addToQueue(name)
+        city.cityStats.update()
         true
     }
 

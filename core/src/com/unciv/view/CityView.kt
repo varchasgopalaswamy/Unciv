@@ -4,6 +4,7 @@ import com.unciv.logic.automation.Automation
 import com.unciv.logic.city.City
 import com.unciv.logic.city.CityFlags
 import com.unciv.logic.civilization.Civilization
+import com.unciv.logic.civilization.PlayerCityOperations
 import com.unciv.logic.city.StatTreeNode
 import com.unciv.logic.city.CityFocus
 import com.unciv.logic.city.CityResources
@@ -151,12 +152,11 @@ class CityView(city: City,
 
     fun tryLockTile(tileView: TileView): Boolean {
         if (!canChangeState()) return false
-        if (!isWorked(tileView)) return false
-        return city.lockTile(getTile(tileView))
+        return PlayerCityOperations(viewer, spectatorMode).trySetTileLocked(city, getTile(tileView), true)
     }
     fun tryUnlockTile(tileView: TileView): Boolean {
         if (!canChangeState()) return false
-        return city.unlockTile(getTile(tileView))
+        return PlayerCityOperations(viewer, spectatorMode).trySetTileLocked(city, getTile(tileView), false)
     }
     fun tryBuyTile(tileView: TileView): Boolean {
         if (!canChangeState()) return false
@@ -166,11 +166,11 @@ class CityView(city: City,
     }
     fun tryWorkTile(tileView: TileView): Boolean {
         if (!canChangeState()) return false
-        return city.workTile(getTile(tileView))
+        return PlayerCityOperations(viewer, spectatorMode).trySetWorkedTile(city, getTile(tileView), true)
     }
     fun tryStopWorkingTile(tileView: TileView): Boolean {
         if (!canChangeState()) return false
-        return city.stopWorkingTile(getTile(tileView))
+        return PlayerCityOperations(viewer, spectatorMode).trySetWorkedTile(city, getTile(tileView), false)
     }
     fun tryAddToQueue(name: String): Boolean {
         if (!canChangeState()) return false
@@ -179,16 +179,17 @@ class CityView(city: City,
     }
     fun tryRemoveFromQueue(index: Int, automatic: Boolean): Boolean {
         if (!canChangeState()) return false
-        city.cityConstructions.removeFromQueue(index, automatic)
-        return true
+        return PlayerCityOperations(viewer, spectatorMode).tryRemoveConstruction(city, index, automatic)
     }
     fun tryRaisePriority(index: Int): Int? {
         if (!canChangeState()) return null
-        return city.cityConstructions.raisePriority(index)
+        if (index == 0) return 0
+        return (index - 1).takeIf { PlayerCityOperations(viewer, spectatorMode).tryMoveConstruction(city, index, it) }
     }
     fun tryLowerPriority(index: Int): Int? {
         if (!canChangeState()) return null
-        return city.cityConstructions.lowerPriority(index)
+        if (index == city.cityConstructions.constructionQueue.lastIndex && index >= 0) return index
+        return (index + 1).takeIf { PlayerCityOperations(viewer, spectatorMode).tryMoveConstruction(city, index, it) }
     }
     fun updateTileStats() = city.cityStats.updateTileStats()
 
