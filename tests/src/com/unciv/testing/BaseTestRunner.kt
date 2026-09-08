@@ -83,7 +83,17 @@ open class BaseTestRunner(
 
     /** The actual JUnit invocation of one test method. Overridable so [GdxTestRunner] can defer it. */
     protected open fun executeChild(method: FrameworkMethod, notifier: RunNotifier) {
-        super.runChild(method, notifier)
+        // JUnit can construct a GdxTestRunner before executing earlier plain tests.
+        // Its global application would then make ordinary TestGame fixtures try to
+        // save desktop settings despite having no desktop files or lifecycle.
+        val application = Gdx.app
+        val withoutApplication = this !is GdxTestRunner
+        if (withoutApplication) Gdx.app = null
+        try {
+            super.runChild(method, notifier)
+        } finally {
+            if (withoutApplication) Gdx.app = application
+        }
     }
 
     private fun runChildRedirectingOutput(method: FrameworkMethod, notifier: RunNotifier) {
