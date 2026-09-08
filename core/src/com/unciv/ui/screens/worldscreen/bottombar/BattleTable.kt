@@ -17,6 +17,7 @@ import com.unciv.logic.battle.ICombatant
 import com.unciv.logic.battle.MapUnitCombatant
 import com.unciv.logic.battle.Nuke
 import com.unciv.logic.battle.TargetHelper
+import com.unciv.logic.civilization.PlayerCombatOperations
 import com.unciv.logic.map.tile.Tile
 import com.unciv.models.UncivSound
 import com.unciv.models.ruleset.unique.UniqueType
@@ -83,7 +84,11 @@ class BattleTable(val worldScreen: WorldScreen) : Table() {
             else -> {
                 val defender = tryGetDefender()?.getCombatant() ?: return hide()
                 if (attacker is CityCombatant && defender is CityCombatant) return hide()
-                val tileToAttackFrom = if (attacker is MapUnitCombatant)
+                val tileToAttackFrom = if (attacker is MapUnitCombatant &&
+                    PlayerCombatOperations(attacker.getCivInfo()).supportsAttack(attacker.unit))
+                    PlayerCombatOperations(attacker.getCivInfo()).attacks(attacker.unit)
+                        .firstOrNull { it.target === defender.getTile() }?.attackFrom ?: attacker.getTile()
+                else if (attacker is MapUnitCombatant)
                     TargetHelper.getAttackableEnemies(
                         attacker.unit,
                         attacker.unit.movement.getDistanceToTiles()
@@ -184,6 +189,15 @@ class BattleTable(val worldScreen: WorldScreen) : Table() {
 
     private fun simulateBattle(attacker: ICombatant, defender: ICombatant, tileToAttackFrom: Tile) {
         clear()
+        val operations = PlayerCombatOperations(attacker.getCivInfo())
+        val ordinaryPreview = when (attacker) {
+            is MapUnitCombatant -> if (operations.supportsAttack(attacker.unit))
+                operations.attacks(attacker.unit).firstOrNull {
+                    it.target === defender.getTile() && it.attackFrom === tileToAttackFrom
+                } else null
+            is CityCombatant -> operations.attacks(attacker.city).firstOrNull { it.target === defender.getTile() }
+            else -> null
+        }
 
         val attackerNameWrapper = Table()
         val attackerLabel = attacker.getName().toLabel(hideIcons = true)
@@ -209,12 +223,12 @@ class BattleTable(val worldScreen: WorldScreen) : Table() {
         add(defender.getDefendingStrength(attacker).tr() + defenceIcon).row()
 
         val attackerModifiers =
-                BattleDamage.getAttackModifiers(attacker, defender, tileToAttackFrom).map {
+                (ordinaryPreview?.attackerModifiers ?: BattleDamage.getAttackModifiers(attacker, defender, tileToAttackFrom)).map {
                     getModifierTable(it.key, it.value)
                 }
         val defenderModifiers =
                 if (defender is MapUnitCombatant)
-                    BattleDamage.getDefenceModifiers(attacker, defender, tileToAttackFrom).map {
+                    (ordinaryPreview?.defenderModifiers ?: BattleDamage.getDefenceModifiers(attacker, defender, tileToAttackFrom)).map {
                         getModifierTable(it.key, it.value)
                     }
                 else listOf()
@@ -224,8 +238,8 @@ class BattleTable(val worldScreen: WorldScreen) : Table() {
 
         if (attackerModifiers.any() || defenderModifiers.any()) {
             addSeparator()
-            val attackerStrength = BattleDamage.getAttackingStrength(attacker, defender, tileToAttackFrom).roundToInt()
-            val defenderStrength = BattleDamage.getDefendingStrength(attacker, defender, tileToAttackFrom).roundToInt()
+            val attackerStrength = (ordinaryPreview?.attackerStrength ?: BattleDamage.getAttackingStrength(attacker, defender, tileToAttackFrom)).roundToInt()
+            val defenderStrength = (ordinaryPreview?.defenderStrength ?: BattleDamage.getDefendingStrength(attacker, defender, tileToAttackFrom)).roundToInt()
             add(attackerStrength.tr() + attackIcon)
             add(defenderStrength.tr() + attackIcon).row()
         }
@@ -249,11 +263,11 @@ class BattleTable(val worldScreen: WorldScreen) : Table() {
             }
             add(defeatedText.toLabel())
         } else {
-            var maxDamageToDefender = BattleDamage.calculateDamageToDefender(attacker, defender, tileToAttackFrom, 1f)
-            var minDamageToDefender = BattleDamage.calculateDamageToDefender(attacker, defender, tileToAttackFrom, 0f)
+            var maxDamageToDefender = ordinaryPreview?.maxDamageToDefender ?: BattleDamage.calculateDamageToDefender(attacker, defender, tileToAttackFrom, 1f)
+            var minDamageToDefender = ordinaryPreview?.minDamageToDefender ?: BattleDamage.calculateDamageToDefender(attacker, defender, tileToAttackFrom, 0f)
 
-            val maxDamageToAttacker = BattleDamage.calculateDamageToAttacker(attacker, defender, tileToAttackFrom, 1f)
-            val minDamageToAttacker = BattleDamage.calculateDamageToAttacker(attacker, defender, tileToAttackFrom, 0f)
+            val maxDamageToAttacker = ordinaryPreview?.maxDamageToAttacker ?: BattleDamage.calculateDamageToAttacker(attacker, defender, tileToAttackFrom, 1f)
+            val minDamageToAttacker = ordinaryPreview?.minDamageToAttacker ?: BattleDamage.calculateDamageToAttacker(attacker, defender, tileToAttackFrom, 0f)
 
             if (attacker is MapUnitCombatant && defender is MapUnitCombatant && attacker.unit.hasUnique(UniqueType.ExtraRangedAttack)) {
                 add("Will perform an extra ranged attack".toLabel(fontSize = 16).apply { wrap = true }).width(quarterScreen)
@@ -261,7 +275,7 @@ class BattleTable(val worldScreen: WorldScreen) : Table() {
 
                 var maxExtraDamageToDefender = 0
                 var minExtraDamageToDefender = 0
-                for (unique in attacker.unit.getMatchingUniques(UniqueType.ExtraRangedAttack)) {
+                for (unique in attacker.unit.getMatchingUniques(UniqueType.ExtraRangedAttack).filter { ordinaryPreview == null }) {
                     val baseRangedStrengthForExtraAttack = (attacker.unit.baseUnit.strength *
                         unique.params[0].toFloat() / 100).toInt()
                     val fakeAttacker = Battle.FakeUnitForExtraRangedAttack(attacker, baseRangedStrengthForExtraAttack)
@@ -312,7 +326,11 @@ class BattleTable(val worldScreen: WorldScreen) : Table() {
             var attackableTile: AttackableTile? = null
 
             if (attacker.canAttack()) {
-                if (attacker is MapUnitCombatant) {
+                if (attacker is MapUnitCombatant && operations.supportsAttack(attacker.unit)) {
+                    attackableTile = ordinaryPreview?.let {
+                            AttackableTile(it.attackFrom, it.target, 0f, it.defender)
+                        }
+                } else if (attacker is MapUnitCombatant) {
                     attackableTile = TargetHelper
                         .getAttackableEnemies(
                             attacker.unit,
@@ -320,8 +338,7 @@ class BattleTable(val worldScreen: WorldScreen) : Table() {
                         )
                         .firstOrNull { it.tileToAttack == defender.getTile() }
                 } else if (attacker is CityCombatant) {
-                    val canBombard =
-                        TargetHelper.getBombardableTiles(attacker.city).contains(defender.getTile())
+                    val canBombard = ordinaryPreview != null
                     if (canBombard) {
                         attackableTile =
                             AttackableTile(attacker.getTile(), defender.getTile(), 0f, defender)
@@ -347,6 +364,23 @@ class BattleTable(val worldScreen: WorldScreen) : Table() {
         defender: ICombatant,
         attackableTile: AttackableTile
     ) {
+        val operations = PlayerCombatOperations(attacker.getCivInfo())
+        if (attacker is CityCombatant || attacker is MapUnitCombatant && operations.supportsAttack(attacker.unit)) {
+            val result = when (attacker) {
+                is CityCombatant -> operations.tryAttack(attacker.city, attackableTile.tileToAttack)
+                is MapUnitCombatant -> operations.tryAttack(attacker.unit, attackableTile.tileToAttack, attackableTile.tileToAttackFrom)
+                else -> null
+            } ?: return
+            worldScreen.mapHolder.removeUnitActionOverlay()
+            worldScreen.shouldUpdate = true
+            worldScreen.clearUndoCheckpoints()
+            if (!result.attacked) return
+            if (!SoundPlayer.play(UncivSound(attacker.getName())))
+                SoundPlayer.play(attacker.getAttackSound())
+            worldScreen.battleAnimationDeferred(attacker, result.damageToAttacker, defender, result.damageToDefender)
+            if (!attacker.canAttack()) hide()
+            return
+        }
         val canStillAttack = attacker !is MapUnitCombatant
                 || Battle.movePreparingAttack(attacker, attackableTile)
         worldScreen.mapHolder.removeUnitActionOverlay() // the overlay was one of attacking

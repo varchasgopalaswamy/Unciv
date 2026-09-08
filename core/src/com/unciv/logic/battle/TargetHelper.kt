@@ -16,7 +16,8 @@ object TargetHelper {
         unit: MapUnit,
         unitDistanceToTiles: PathsToTilesWithinTurn,
         tilesToCheck: List<Tile>? = null,
-        stayOnTile: Boolean = false
+        stayOnTile: Boolean = false,
+        forPlanning: Boolean = false
     ): ArrayList<AttackableTile> = timeThis("getAttackableEnemies") {
         val rangeOfAttack = unit.getRange()
         val attackableTiles = ArrayList<AttackableTile>()
@@ -24,7 +25,7 @@ object TargetHelper {
         val unitMustBeSetUp = unit.hasUnique(UniqueType.MustSetUp)
         val tilesToAttackFrom = if (stayOnTile || unit.baseUnit.isAirUnit())
             sequenceOf(Pair(unit.currentTile, unit.currentMovement))
-        else getTilesToAttackFromWhenUnitMoves(unitDistanceToTiles, unitMustBeSetUp, unit)
+        else getTilesToAttackFromWhenUnitMoves(unitDistanceToTiles, unitMustBeSetUp, unit, forPlanning)
 
         val tilesWithEnemies: HashSet<Tile> = HashSet()
         val tilesWithoutEnemies: HashSet<Tile> = HashSet()
@@ -33,8 +34,12 @@ object TargetHelper {
             // tile if the escorted unit can also move into the tile we are attacking if we kill the enemy unit.
             if (unit.baseUnit.isMelee() && unit.isEscorting()) {
                 val escortingUnit = unit.getOtherEscortUnit()!!
-                if (!escortingUnit.movement.canReachInCurrentTurn(reachableTile)
-                    || escortingUnit.currentMovement - escortingUnit.movement.getDistanceToTiles()[reachableTile]!!.totalMovement <= 0f) 
+                val escortDistances = if (forPlanning)
+                    escortingUnit.movement.getMovementToTilesAtPosition(escortingUnit.currentTile.position,
+                        escortingUnit.currentMovement, forPlanning = true)
+                else escortingUnit.movement.getDistanceToTiles()
+                val escortDistance = escortDistances[reachableTile]
+                if (escortDistance == null || escortingUnit.currentMovement - escortDistance.totalMovement <= 0f)
                     continue
             }
 
@@ -42,7 +47,8 @@ object TargetHelper {
                 if (unit.baseUnit.isMelee()) reachableTile.neighbors
                 else if (unit.baseUnit.isAirUnit() || unit.hasUnique(UniqueType.IndirectFire, checkCivInfoUniques = true))
                     reachableTile.getTilesInDistance(rangeOfAttack)
-                else reachableTile.tileMap.getViewableTiles(reachableTile.position, rangeOfAttack, true).asSequence()
+                else reachableTile.tileMap.getViewableTiles(reachableTile.position, rangeOfAttack, true,
+                    planningCiv = unit.civ.takeIf { forPlanning }).asSequence()
 
             for (tile in tilesInAttackRange) {
                 when {
@@ -57,7 +63,7 @@ object TargetHelper {
                         Battle.getMapCombatantOfTile(tile)
                     )
                     tile in tilesWithoutEnemies -> continue // avoid checking the same empty tile multiple times
-                    tileContainsAttackableEnemy(unit, tile, tilesToCheck) || unit.isPreparingAirSweep() -> {
+                    tileContainsAttackableEnemy(unit, tile, tilesToCheck, forPlanning) || unit.isPreparingAirSweep() -> {
                         tilesWithEnemies += tile
                         attackableTiles += AttackableTile(
                             reachableTile, tile, movementLeft,
@@ -72,7 +78,8 @@ object TargetHelper {
     }
 
     @Readonly
-    private fun getTilesToAttackFromWhenUnitMoves(unitDistanceToTiles: PathsToTilesWithinTurn, unitMustBeSetUp: Boolean, unit: MapUnit) =
+    private fun getTilesToAttackFromWhenUnitMoves(unitDistanceToTiles: PathsToTilesWithinTurn, unitMustBeSetUp: Boolean,
+                                               unit: MapUnit, forPlanning: Boolean) =
         unitDistanceToTiles.asSequence()
             .sortedWith {a,b -> a.value.totalMovement.compareTo(b.value.totalMovement) }
             .map { (tile, distance) ->
@@ -88,16 +95,17 @@ object TargetHelper {
             // still got leftover movement points after all that, to attack
             .filter { it.second > Constants.minimumMovementEpsilon }
             .filter {
-                it.first == unit.getTile() || unit.movement.canMoveTo(it.first)
+                it.first == unit.getTile() || unit.movement.canMoveTo(it.first, forPlanning = forPlanning)
             }
 
     @Readonly
-    private fun tileContainsAttackableEnemy(unit: MapUnit, tile: Tile, tilesToCheck: List<Tile>?): Boolean {
+    private fun tileContainsAttackableEnemy(unit: MapUnit, tile: Tile, tilesToCheck: List<Tile>?, forPlanning: Boolean): Boolean {
         if (tile !in (tilesToCheck ?: unit.civ.viewableTiles) || !containsAttackableEnemy(tile, MapUnitCombatant(unit)) )
             return false
         val mapCombatant = Battle.getMapCombatantOfTile(tile)
 
-        return (!unit.baseUnit.isMelee() || mapCombatant !is MapUnitCombatant || !mapCombatant.unit.isCivilian() || unit.movement.canPassThrough(tile))
+        return (!unit.baseUnit.isMelee() || mapCombatant !is MapUnitCombatant || !mapCombatant.unit.isCivilian()
+            || unit.movement.canPassThrough(tile, forPlanning = forPlanning))
     }
 
     @Readonly

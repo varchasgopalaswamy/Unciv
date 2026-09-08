@@ -488,8 +488,13 @@ class TileMap(initialCapacity: Int = 10) : IsPartOfGameInfoSerialization {
 
     /** @return List of tiles visible from location [position] for a unit with sight range [sightDistance] */
     @Readonly
-    fun getViewableTiles(position: HexCoord, sightDistance: Int, forAttack: Boolean = false): List<Tile> {
-        val aUnitHeight = get(position).unitHeight
+    fun getViewableTiles(position: HexCoord, sightDistance: Int, forAttack: Boolean = false,
+                         planningCiv: Civilization? = null): List<Tile> {
+        // Attack planning cannot inspect terrain beyond the player's exploration. Unknown
+        // terrain is provisionally flat, just as movement planning assumes it is passable.
+        fun Tile.knownUnitHeight() = if (planningCiv == null || isExplored(planningCiv)) unitHeight else 0
+        fun Tile.knownTileHeight() = if (planningCiv == null || isExplored(planningCiv)) tileHeight else 0
+        val aUnitHeight = get(position).knownUnitHeight()
         val viewableTiles = mutableListOf(ViewableTile(
             get(position),
             aUnitHeight,
@@ -503,7 +508,7 @@ class TileMap(initialCapacity: Int = 10) : IsPartOfGameInfoSerialization {
             val tilesToAddInDistanceI = ArrayList<ViewableTile>()
 
             forEachTileAtDistance(position, i) { cTile -> // for each tile in that layer,
-                val cTileHeight = cTile.tileHeight
+                val cTileHeight = cTile.knownTileHeight()
 
                 // For the sightdistance+1 layer - that's "one out of sight" - it's only visible if it's higher than the current tile
                 if (i == sightDistance + 1 && (cTileHeight <= aUnitHeight || forAttack))
@@ -527,7 +532,7 @@ class TileMap(initialCapacity: Int = 10) : IsPartOfGameInfoSerialization {
                     cTile,
                     max(cTileHeight, bMinimumHighestSeenTerrainSoFar),
                     aUnitHeight >= bMinimumHighestSeenTerrainSoFar || cTileHeight > bMinimumHighestSeenTerrainSoFar,
-                    aUnitHeight >= bMinimumHighestSeenTerrainSoFar || cTile.unitHeight > bMinimumHighestSeenTerrainSoFar,
+                    aUnitHeight >= bMinimumHighestSeenTerrainSoFar || cTile.knownUnitHeight() > bMinimumHighestSeenTerrainSoFar,
                 ))
             }
             viewableTiles.addAll(tilesToAddInDistanceI)
