@@ -104,7 +104,11 @@ class MajorCivDiplomacyTable(private val diplomacyScreen: DiplomacyScreen) {
         otherCivDiplomacyManager: DiplomacyManager
     ): TextButton {
         val negotiatePeaceButton = "Negotiate Peace".toTextButton()
+        val peaceOperations = com.unciv.logic.civilization.PlayerPeaceOperations(
+            viewingCiv, diplomacyScreen.viewingCivView.spectatorMode)
         negotiatePeaceButton.onClick {
+            if (diplomacyScreen.isNotPlayersTurn() || peaceOperations.negotiationUnavailableReason(otherCiv) != null)
+                return@onClick
             val tradeTable = diplomacyScreen.setTrade(otherCiv)
             val peaceTreaty = TradeOffer(Constants.peaceTreaty, TradeOfferType.Treaty, speed = viewingCiv.gameInfo.speed)
             tradeTable.tradeView.theirStagedOffers().add(peaceTreaty)
@@ -113,7 +117,8 @@ class MajorCivDiplomacyTable(private val diplomacyScreen: DiplomacyScreen) {
             tradeTable.enableOfferButton(true)
         }
 
-        if (diplomacyScreen.isNotPlayersTurn()) negotiatePeaceButton.disable()
+        if (diplomacyScreen.isNotPlayersTurn() || peaceOperations.negotiationUnavailableReason(otherCiv) != null)
+            negotiatePeaceButton.disable()
 
         if (otherCivDiplomacyManager.hasFlag(DiplomacyFlags.DeclaredWar)) {
             negotiatePeaceButton.disable() // Can't trade for 10 turns after war was declared

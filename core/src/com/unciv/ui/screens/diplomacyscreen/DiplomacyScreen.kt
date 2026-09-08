@@ -10,6 +10,7 @@ import com.unciv.GUI
 import com.unciv.UncivGame
 import com.unciv.logic.civilization.Civilization
 import com.unciv.logic.civilization.NotificationIcon
+import com.unciv.logic.civilization.PlayerDiplomacyOperations
 import com.unciv.logic.civilization.diplomacy.DiplomacyFlags
 import com.unciv.logic.civilization.diplomacy.DiplomacyManager
 import com.unciv.logic.civilization.diplomacy.DiplomaticStatus
@@ -317,6 +318,7 @@ class DiplomacyScreen(
         diplomacyManager: DiplomacyManager,
         otherCiv: Civilization
     ): TextButton {
+        val operations = PlayerDiplomacyOperations(viewingCiv)
         val declareWarButton = "Declare war".toTextButton(skin.get("negative", TextButton.TextButtonStyle::class.java))
         val turnsToPeaceTreaty = diplomacyManager.turnsToPeaceTreaty()
         if (turnsToPeaceTreaty > 0) {
@@ -324,51 +326,27 @@ class DiplomacyScreen(
             declareWarButton.setText(declareWarButton.text.toString() + " (${turnsToPeaceTreaty.tr()}${Fonts.turn})")
         }
         declareWarButton.onClick {
-            ConfirmPopup(this, getDeclareWarButtonText(otherCiv), "Declare war") {
-                diplomacyManager.declareWar()
-                setRightSideFlavorText(otherCiv, otherCiv.nation.attacked, "Very well.")
+            val confirmation = operations.declarationConfirmation(otherCiv) ?: return@onClick
+            ConfirmPopup(this, confirmation.joinToString("\n") { "{$it}" }, "Declare war") {
+                if (isNotPlayersTurn()) return@ConfirmPopup
+                if (otherCiv.isMajorCiv()) {
+                    if (!operations.tryDeclareWar(otherCiv)) return@ConfirmPopup
+                } else {
+                    if (!diplomacyManager.canDeclareWar()) return@ConfirmPopup
+                    diplomacyManager.declareWar()
+                }
+                operations.declarationResponse(otherCiv)?.let { response ->
+                    setRightSideFlavorText(otherCiv, response.paragraphs.joinToString("\n"), response.acknowledgement)
+                }
                 updateLeftSideTable(otherCiv)
                 val music = UncivGame.Current.musicController
                 music.chooseTrack(otherCiv.civName, MusicMood.War, MusicTrackChooserFlags.setSpecific)
                 music.playVoice("${otherCiv.civName}.attacked")
             }.open()
         }
-        if (isNotPlayersTurn()) declareWarButton.disable()
+        if (isNotPlayersTurn() || otherCiv.isMajorCiv() && operations.options(otherCiv)?.declareWar?.available != true)
+            declareWarButton.disable()
         return declareWarButton
-    }
-
-    private fun getDeclareWarButtonText(otherCiv: Civilization): String {
-        val messageLines = arrayListOf<String>()
-        messageLines += "Declare war on [${otherCiv.civName}]?"
-        
-        if (otherCiv.getDiplomacyManager(viewingCiv)!!.hasFlag(DiplomacyFlags.AgreedToNotAttackUs))
-            messageLines += "This will break your promise to not attack them. Other leaders will view this unfavorably."
-        
-        // Tell the player who all will join the other side from defensive pacts
-        val otherCivDefensivePactList = otherCiv.diplomacy.values.filter {
-            otherCivDiploManager -> otherCivDiploManager.otherCiv != viewingCiv
-            && otherCivDiploManager.diplomaticStatus == DiplomaticStatus.DefensivePact
-            && !otherCivDiploManager.otherCiv.isAtWarWith(viewingCiv) }
-            .map { it.otherCiv }
-
-        // Defensive pact chains are not allowed now
-        for (civ in otherCivDefensivePactList) {
-            messageLines += if (viewingCiv.knows(civ)) {
-                "[${civ.civName}] will also join them in the war"
-            } else {
-                "[An unknown civilization] will also join them in the war"
-            }
-        }
-
-        // Tell the player that their defensive pacts will be canceled.
-        for (civDiploManager in viewingCiv.diplomacy.values) {
-            if (civDiploManager.otherCiv != otherCiv
-                && civDiploManager.diplomaticStatus == DiplomaticStatus.DefensivePact
-                && !otherCivDefensivePactList.contains(civDiploManager.otherCiv)) {
-                messageLines += "This will cancel your defensive pact with [${civDiploManager.otherCiv.civName}]"
-            }
-        }
-        return messageLines.joinToString("\n") { "{$it}" }
     }
 
     //endregion

@@ -75,7 +75,7 @@ class PlayerOperations(private val civ: Civilization, private val spectatorMode:
     companion object {
         val informationalAlerts = setOf(
             AlertType.TechResearched, AlertType.GoldenAge, AlertType.StartIntro,
-            AlertType.WonderBuilt, AlertType.FirstContact,
+            AlertType.WonderBuilt, AlertType.FirstContact, AlertType.WarDeclaration,
         )
 
         /** Matches the ordinary city-name popup, including its single-line text field. */
@@ -145,6 +145,19 @@ class PlayerOperations(private val civ: Civilization, private val spectatorMode:
         if (spectatorMode || civ.isSpectator() || civ.gameInfo.civilizations.none { it === civ } ||
             civ.popupAlerts.none { it === alert }) return@synchronized null
         when (alert.type) {
+            AlertType.WarDeclaration -> {
+                val other = civ.gameInfo.civilizations.firstOrNull { it.civID == alert.value }
+                    ?: return@synchronized null
+                if (!civ.knows(other) || other.isDefeated() || other.isSpectator() || other.isBarbarian)
+                    return@synchronized null
+                InformationalPopupContent(
+                    title = other.getLeaderDisplayName(),
+                    paragraphs = immutableParagraphs("DECLARATION OF WAR", other.nation.declaringWar)
+                        .let { Collections.unmodifiableList(it.filter(String::isNotEmpty)) },
+                    acknowledgement = "Very well.",
+                    additionalAcknowledgements = immutableParagraphs("You'll pay for this!"),
+                )
+            }
             AlertType.FirstContact -> {
                 val introduction = firstContactIntroduction(alert) ?: return@synchronized null
                 InformationalPopupContent(

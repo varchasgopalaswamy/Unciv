@@ -87,7 +87,7 @@ object DeclareWar {
 
         when (declareWarReason.warType) {
             WarType.DirectWar -> {
-                otherCiv.popupAlerts.add(PopupAlert(AlertType.WarDeclaration, civInfo.civName))
+                otherCiv.popupAlerts.add(PopupAlert(AlertType.WarDeclaration, civInfo.civID))
 
                 otherCiv.addNotification("[${civInfo.civName}] has declared war on us!",
                     NotificationCategory.Diplomacy, otherCiv.civName, NotificationIcon.War, civInfo.civName)
@@ -100,7 +100,7 @@ object DeclareWar {
             WarType.DefensivePactWar, WarType.CityStateAllianceWar, WarType.JoinWar,
             WarType.ProtectedCityStateWar, WarType.AlliedCityStateWar -> {
                 val allyCiv = declareWarReason.allyCiv!!
-                otherCiv.popupAlerts.add(PopupAlert(AlertType.WarDeclaration, civInfo.civName))
+                otherCiv.popupAlerts.add(PopupAlert(AlertType.WarDeclaration, civInfo.civID))
                 val aggressor = if (declareWarReason.warType == WarType.DefensivePactWar) otherCiv else civInfo
                 val defender = if (declareWarReason.warType == WarType.DefensivePactWar) civInfo else otherCiv
 
@@ -380,4 +380,3 @@ enum class WarType {
  * the allyCiv needs to be given.
  */
 class DeclareWarReason(val warType: WarType, val allyCiv: Civilization? = null)
-

@@ -495,16 +495,13 @@ class AlertPopup(
     }
 
     private fun addWarDeclaration(): Boolean {
+        val content = PlayerOperations(viewingCiv).informationalPopupContent(popupAlert) ?: return false
         val civInfo = getCiv(popupAlert.value)
-        // technically they already declared war, but if they're dead it'll be strange that they talk to us
-        if (civInfo.isDefeated()) return false
         addLeaderName(civInfo)
-        addTopicHeader("DECLARATION OF WAR", LIGHTER_RED_COLOR)
-        val leaderMessage = civInfo.nation.declaringWar
-        if (leaderMessage.isNotEmpty())
-            addGoodSizedLabel(leaderMessage).row()
-        addCloseButton("You'll pay for this!")
-        addCloseButton("Very well.")
+        addTopicHeader(content.paragraphs.first(), LIGHTER_RED_COLOR)
+        content.paragraphs.drop(1).forEach { addGoodSizedLabel(it).row() }
+        content.additionalAcknowledgements.forEach { addCloseButton(it) }
+        addCloseButton(content.acknowledgement)
         equalizeLastTwoButtonWidths()
         music.chooseTrack(civInfo.civName, MusicMood.War, MusicTrackChooserFlags.setSpecific)
         music.playVoice("${civInfo.civName}.declaringWar")

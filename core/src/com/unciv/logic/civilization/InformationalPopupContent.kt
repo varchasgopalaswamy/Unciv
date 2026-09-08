@@ -12,4 +12,6 @@ data class InformationalPopupContent(
     val paragraphs: List<String>,
     val acknowledgement: String,
     val quote: String? = null,
+    /** Additional labels with the same acknowledgement effect. */
+    val additionalAcknowledgements: List<String> = emptyList(),
 )

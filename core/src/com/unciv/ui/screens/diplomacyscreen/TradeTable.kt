@@ -67,8 +67,7 @@ class TradeTable(
                 }
             }
 
-            tradeView.tryProposeStagedTrade()
-            offerButton.setText("Retract offer".tr())
+            if (tradeView.tryProposeStagedTrade()) offerButton.setText("Retract offer".tr())
         }
 
         lowerTable.add(offerButton)
