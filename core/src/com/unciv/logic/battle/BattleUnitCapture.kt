@@ -88,9 +88,9 @@ object BattleUnitCapture {
         val civilianOwnerBeforePlacement = civilianBeforePlacement?.civ
         if (civilianBeforePlacement != null)
             attackRecorder?.snapshotTarget(MapUnitCombatant(civilianBeforePlacement), retainIfUnaffected = false)
-        val addedUnit = attacker.getCivInfo().units.placeUnitNearTile(defenderTile.position, defender.getName()) ?: return false
-        // Placement may capture a stacked civilian through ordinary movement code. Classify
-        // that capture here without passing the recorder through placement or movement.
+        val addedUnit = attacker.getCivInfo().units.placeUnitNearTile(defenderTile.position, defender.getName(), attackRecorder) ?: return false
+        // Placement may capture a stacked civilian through ordinary movement code. Keep
+        // its final classification even if a placement effect removed or converted it.
         if (civilianBeforePlacement != null &&
             (civilianBeforePlacement.civ != civilianOwnerBeforePlacement || civilianBeforePlacement.isDestroyed)) {
             val outcome = if (civilianBeforePlacement.civ != civilianOwnerBeforePlacement &&
@@ -103,7 +103,7 @@ object BattleUnitCapture {
         addedUnit.health = 50
         attacker.getCivInfo().addNotification("An enemy [${defender.getName()}] has joined us!", MapUnitAction(addedUnit), NotificationCategory.War, defender.getName())
 
-        publishCaptureNotification(captureEvent, defenderCiv, AttackParticipantOutcome.Captured)
+        publishCaptureNotification(captureEvent, defenderCiv, AttackParticipantOutcome.Captured, attackRecorder == null)
 
         val civilianUnit = defenderTile.civilianUnit
         // placeUnitNearTile might not have spawned the unit in exactly this tile, in which case no capture would have happened on this tile. So we need to do that here.
@@ -181,7 +181,7 @@ object BattleUnitCapture {
         }
 
         val outcome = if (wasDestroyedInstead) AttackParticipantOutcome.Destroyed else AttackParticipantOutcome.Captured
-        publishCaptureNotification(captureEvent, defenderCiv, outcome)
+        publishCaptureNotification(captureEvent, defenderCiv, outcome, attackRecorder == null)
         if (wasDestroyedInstead)
             Battle.triggerDefeatUniques(defender, attacker, capturedUnitTile, attackRecorder)
 
@@ -192,12 +192,13 @@ object BattleUnitCapture {
         return outcome
     }
 
-    /** Standalone movement captures use the same privacy projection without adding attack history. */
-    private fun publishCaptureNotification(event: AttackEvent, recipient: Civilization, outcome: AttackParticipantOutcome) {
+    /** Movement captures need history too; captures inside an attack use its enclosing recorder. */
+    private fun publishCaptureNotification(event: AttackEvent, recipient: Civilization, outcome: AttackParticipantOutcome, standalone: Boolean) {
         val target = event.targets.single()
         target.captureAttempted = true
         target.outcome = outcome
         event.resolution = AttackResolution.Completed
+        if (standalone) recipient.gameInfo.storeAttack(event)
         val view = recipient.gameInfo.createAttackEventView(event, recipient)
         for (notification in AttackNotifications.createCapture(view))
             recipient.addNotification(notification.text, notification.actions, notification.category,

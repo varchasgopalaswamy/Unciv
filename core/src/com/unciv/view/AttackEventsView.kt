@@ -7,6 +7,7 @@ import com.unciv.logic.battle.AttackParticipantKind
 import com.unciv.logic.battle.AttackParticipantOutcome
 import com.unciv.logic.battle.AttackResolution
 import com.unciv.logic.civilization.Civilization
+import com.unciv.logic.notifications.AttackNotifications
 import com.unciv.logic.map.HexCoord
 import yairm210.purity.annotations.LocalState
 import yairm210.purity.annotations.Readonly
@@ -47,30 +48,42 @@ class AttackEventsView internal constructor(
 
     /** Reports contain only facts this recipient can receive, without exposing stored records. */
     @Readonly
-    fun getCombatReports(): List<ObservedCombatReport> {
-        @LocalState val reports = ArrayList<ObservedCombatReport>()
-        for (attack in events) {
-            if (attack.resolution == AttackResolution.Pending) continue
-            val attacker = attack.attacker ?: continue
-            if (attack.kind == AttackKind.AirSweep && attack.resolution == AttackResolution.Completed
-                && attack.interceptions.isEmpty() && attacker.civId == viewer.civID)
-                reports.add(ObservedUnopposedAirSweep(attack.turn, attacker.name))
-            reports.addAll(interceptionReports(attack, attacker))
-            withdrawalReport(attack, attacker)?.let { reports.add(it) }
-            if (attack.resolution != AttackResolution.Completed || attack.kind == AttackKind.AirSweep) continue
+    fun getCombatReports(): List<ObservedCombatReport> = immutableCopy(events.flatMap(::combatReports))
+
+    /** Stable identities allow callers to retain delivered reports past recent-history expiry. */
+    @Readonly
+    @Suppress("purity") // Helpers and notification formatters allocate detached values only.
+    fun getCombatReportEntries(): List<ObservedCombatReportEntry> = immutableCopy(events.flatMap { attack ->
+        (combatReports(attack) + captureReports(attack)).mapIndexed { index, report ->
+            ObservedCombatReportEntry("${attack.id}:$index", report, AttackNotifications.create(report)?.text)
+        }
+    })
+
+    private fun combatReports(attack: AttackEvent): List<ObservedCombatReport> {
+        if (attack.resolution == AttackResolution.Pending) return emptyList()
+        val attacker = attack.attacker ?: return emptyList()
+        val reports = ArrayList<ObservedCombatReport>()
+        if (attack.kind == AttackKind.AirSweep && attack.resolution == AttackResolution.Completed
+            && attack.interceptions.isEmpty() && attacker.civId == viewer.civID)
+            reports.add(ObservedUnopposedAirSweep(attack.turn, attacker.name))
+        reports.addAll(interceptionReports(attack, attacker))
+        withdrawalReport(attack, attacker)?.let { reports.add(it) }
+        if (attack.resolution == AttackResolution.Completed && attack.kind != AttackKind.AirSweep) {
             nuclearReport(attack, attacker)?.let { reports.add(it) }
             reports.addAll(resultReports(attack, attacker))
             improvementDestructionReport(attack, attacker)?.let { reports.add(it) }
         }
-        return immutableCopy(reports)
+        return reports
     }
 
     /** Capture notices use an ephemeral snapshot taken before ownership or placement changes. */
     @Readonly
-    fun getCaptureReports(): List<ObservedAttackResult> = immutableCopy(events.flatMap { attack ->
+    fun getCaptureReports(): List<ObservedAttackResult> = immutableCopy(events.flatMap(::captureReports))
+
+    private fun captureReports(attack: AttackEvent): List<ObservedAttackResult> {
         val attacker = attack.attacker
-        if (attack.resolution != AttackResolution.Completed || attacker == null) return@flatMap emptyList()
-        attack.targets.mapNotNull { target ->
+        if (attack.resolution != AttackResolution.Completed || attacker == null) return emptyList()
+        return attack.targets.mapNotNull { target ->
             if (!target.captureAttempted || target.civId != viewer.civID
                 || target.outcome !in listOf(AttackParticipantOutcome.Captured, AttackParticipantOutcome.Destroyed))
                 return@mapNotNull null
@@ -83,7 +96,7 @@ class AttackEventsView internal constructor(
                 locations = immutableCopy(listOf(target.position))
             )
         }
-    })
+    }
 
     /**
      * Name information for a trigger involving our own unit, including during attack execution.

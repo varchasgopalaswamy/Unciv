@@ -5,6 +5,7 @@ package com.unciv.logic.map.mapunit.movement
 import com.unciv.Constants
 import com.unciv.UncivGame
 import com.unciv.logic.automation.Timers.Companion.timeThis
+import com.unciv.logic.battle.AttackRecorder
 import com.unciv.logic.civilization.diplomacy.RelationshipLevel
 import com.unciv.logic.map.BFS
 import com.unciv.logic.map.HexCoord
@@ -486,7 +487,8 @@ class UnitMovement(val unit: MapUnit) {
         }
     }
 
-    fun moveToTile(destination: Tile, considerZoneOfControl: Boolean = true, plannedPath: List<Tile>? = null): Unit = timeThis<Unit>("moveToTile") {
+    fun moveToTile(destination: Tile, considerZoneOfControl: Boolean = true, plannedPath: List<Tile>? = null,
+                   attackRecorder: AttackRecorder? = null): Unit = timeThis<Unit>("moveToTile") {
         if (destination == unit.getTile() || unit.isDestroyed) return // already here (or dead)!
         if (plannedPath != null) {
             require(!unit.baseUnit.isAirUnit() && !unit.isPreparingParadrop())
@@ -504,7 +506,7 @@ class UnitMovement(val unit: MapUnit) {
             if (unit.action != UnitActionType.Automate.value) unit.action = null
             unit.removeFromTile()
             unit.isTransported = false // it has left the carrier by own means
-            unit.putInTile(destination)
+            unit.putInTile(destination, attackRecorder)
             unit.currentMovement = 0f
             unit.mostRecentMoveType = UnitMovementMemoryType.UnitTeleported
             clearPathfindingCache()
@@ -515,7 +517,7 @@ class UnitMovement(val unit: MapUnit) {
             val origin = unit.getTile()
             unit.action = null
             unit.removeFromTile()
-            unit.putInTile(destination)
+            unit.putInTile(destination, attackRecorder)
             unit.mostRecentMoveType = UnitMovementMemoryType.UnitTeleported
 
             teleportTransportedUnitsTo(origin, destination)
@@ -577,10 +579,10 @@ class UnitMovement(val unit: MapUnit) {
                 lastReachedEnterableTile = tile
                 unit.useMovementPoints(passingMovementSpent)
                 unit.removeFromTile()
-                unit.putInTile(tile) // Required for ruins,
+                unit.putInTile(tile, attackRecorder) // Required for ruins,
 
                 if (escortUnit != null) {
-                    escortUnit.movement.moveToTile(tile)
+                    escortUnit.movement.moveToTile(tile, attackRecorder = attackRecorder)
                     unit.startEscorting() // Need to re-apply this
                 }
 
@@ -609,10 +611,10 @@ class UnitMovement(val unit: MapUnit) {
         for (payload in payloadUnits) {
             payload.removeFromTile()
             for (tile in pathToLastReachableTile) {
-                payload.moveThroughTile(tile)
+                payload.moveThroughTile(tile, attackRecorder)
                 if (tile == finalTileReached) break // this is the final tile the transport reached
             }
-            payload.putInTile(finalTileReached)
+            payload.putInTile(finalTileReached, attackRecorder)
             payload.isTransported = true // restore the flag to not leave the payload in the city
             payload.mostRecentMoveType = UnitMovementMemoryType.UnitMoved
         }
@@ -626,7 +628,7 @@ class UnitMovement(val unit: MapUnit) {
         // Under rare cases (see #8044), we can be headed to a tile and *the entire path* is blocked by other units, so we can't "enter" that tile.
         // If, in such conditions, the *destination tile* is unenterable, needToFindNewRoute will trigger, so we need to catch this situation to avoid infinite loop
         if (plannedPath == null && needToFindNewRoute && unit.currentTile != origin) {
-            moveToTile(destination, considerZoneOfControl)
+            moveToTile(destination, considerZoneOfControl, attackRecorder = attackRecorder)
         }
 
         if (unit.currentTile != origin) {

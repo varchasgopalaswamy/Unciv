@@ -5,6 +5,7 @@ import com.unciv.logic.map.HexCoord
 import com.unciv.logic.map.tile.Tile
 import yairm210.purity.annotations.LocalState
 import yairm210.purity.annotations.Readonly
+import java.util.UUID
 
 enum class AttackKind { Combat, Nuclear, AirSweep }
 enum class AttackResolution { Pending, Completed, Withdrawn, Intercepted }
@@ -15,6 +16,8 @@ enum class AttackResolution { Pending, Completed, Withdrawn, Intercepted }
  * A nuclear blast also reveals its center to affected civilizations when it detonates.
  */
 class AttackEvent() : IsPartOfGameInfoSerialization {
+    /** Opaque identity survives save/load and cloning without disclosing event counts. */
+    var id = UUID.randomUUID().toString()
     var turn = 0
     var source = HexCoord.Zero
     var target = HexCoord.Zero
@@ -66,6 +69,7 @@ class AttackEvent() : IsPartOfGameInfoSerialization {
     @Readonly
     fun clone(): AttackEvent {
         @LocalState val result = AttackEvent()
+        result.id = id
         result.turn = turn
         result.source = source
         result.target = target

@@ -6,6 +6,7 @@ import com.unciv.logic.map.mapunit.MapUnit
 import com.unciv.models.ruleset.Building
 import com.unciv.models.ruleset.IConstruction
 import com.unciv.models.ruleset.PerpetualConstruction
+import com.unciv.models.ruleset.Victory
 import yairm210.purity.annotations.Readonly
 import java.util.Collections
 
@@ -76,6 +77,7 @@ class PlayerOperations(private val civ: Civilization, private val spectatorMode:
         val informationalAlerts = setOf(
             AlertType.TechResearched, AlertType.GoldenAge, AlertType.StartIntro,
             AlertType.WonderBuilt, AlertType.FirstContact, AlertType.WarDeclaration,
+            AlertType.Defeated, AlertType.GameHasBeenWon,
         )
 
         /** Matches the ordinary city-name popup, including its single-line text field. */
@@ -145,6 +147,23 @@ class PlayerOperations(private val civ: Civilization, private val spectatorMode:
         if (spectatorMode || civ.isSpectator() || civ.gameInfo.civilizations.none { it === civ } ||
             civ.popupAlerts.none { it === alert }) return@synchronized null
         when (alert.type) {
+            AlertType.Defeated -> {
+                val other = civ.gameInfo.civilizations.firstOrNull { it.civID == alert.value }
+                    ?: return@synchronized null
+                InformationalPopupContent(
+                    title = other.getLeaderDisplayName(),
+                    paragraphs = immutableParagraphs(other.nation.defeated),
+                    acknowledgement = "Farewell.",
+                )
+            }
+            AlertType.GameHasBeenWon -> {
+                val victory = civ.gameInfo.victoryData ?: return@synchronized null
+                InformationalPopupContent(
+                    title = "[${victory.winningCivObject.civName}] has won a [${victory.victoryType}] Victory!",
+                    paragraphs = emptyList(),
+                    acknowledgement = Constants.close,
+                )
+            }
             AlertType.WarDeclaration -> {
                 val other = civ.gameInfo.civilizations.firstOrNull { it.civID == alert.value }
                     ?: return@synchronized null
@@ -202,8 +221,35 @@ class PlayerOperations(private val civ: Civilization, private val spectatorMode:
     private fun immutableParagraphs(vararg text: String): List<String> =
         Collections.unmodifiableList(text.toList())
 
+    /** The victory screen's result is public even to defeated players and out of turn. */
+    fun gameResult(): PlayerGameResult? = synchronized(civ.gameInfo) {
+        if (spectatorMode || civ.isSpectator() || civ.gameInfo.civilizations.none { it === civ })
+            return@synchronized null
+        val data = civ.gameInfo.victoryData
+        if (data == null) {
+            if (!civ.isDefeated()) return@synchronized null
+            return@synchronized PlayerGameResult("Defeat", null, null, null, null,
+                Victory().defeatString, emptyList())
+        }
+        val won = data.winningCiv == civ.civID
+        val victory = civ.gameInfo.ruleset.victories[data.victoryType] ?: Victory()
+        PlayerGameResult(
+            outcome = if (won) "Victory" else "Defeat",
+            winningCivilizationId = data.winningCiv,
+            winningCivilizationName = data.winningCivObject.civName,
+            victoryType = data.victoryType,
+            victoryTurn = data.victoryTurn,
+            title = if (won) "You have won a [${data.victoryType}] Victory!"
+                else "[${data.winningCivObject.civName}] has won a [${data.victoryType}] Victory!",
+            paragraphs = immutableParagraphs(if (won) victory.victoryString else victory.defeatString),
+        )
+    }
+
     fun tryAcknowledgeAlert(alert: PopupAlert): Boolean = synchronized(civ.gameInfo) {
-        if (!canAct() || informationalPopupContent(alert) == null)
+        // Victory remains dismissible after the viewer is eliminated or another player is active.
+        val canDismissResult = alert.type == AlertType.GameHasBeenWon && !spectatorMode &&
+            civ.isHuman() && civ.isMajorCiv() && civ.gameInfo.civilizations.any { it === civ }
+        if ((!canAct() && !canDismissResult) || informationalPopupContent(alert) == null)
             return@synchronized false
         civ.popupAlerts.remove(alert)
         true

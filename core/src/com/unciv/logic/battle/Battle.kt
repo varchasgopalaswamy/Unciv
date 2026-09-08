@@ -579,7 +579,7 @@ object Battle {
         // are exempt from zone of control, since units that cannot move after attacking already
         // lose all remaining movement points anyway.
         val civilian = attackedTile.civilianUnit?.takeIf { it.civ != attacker.getCivInfo() }
-        attacker.unit.movement.moveToTile(attackedTile, considerZoneOfControl = false)
+        attacker.unit.movement.moveToTile(attackedTile, considerZoneOfControl = false, attackRecorder = attackRecorder)
         if (civilian != null && attacker.getTile() == attackedTile
             && (civilian.isDestroyed || civilian.civ == attacker.getCivInfo())) {
             val successor = attacker.getCivInfo().units.getUnitById(civilian.id)
@@ -721,7 +721,7 @@ object Battle {
             city.puppetCity(attackerCiv)
             //Although in Civ5 Venice is unable to re-annex their capital, that seems a bit silly. No check for May not annex cities here.
             city.annexCity()
-        } else if (attackerCiv.isHuman() && UncivGame.Current.worldScreen?.autoPlay?.isAutoPlayingAndFullAutoPlayAI() == false) {
+        } else if (attackerCiv.isHuman() && UncivGame.Current.worldScreen?.autoPlay?.isAutoPlayingAndFullAutoPlayAI() != true) {
             // we're not taking our former capital
             attackerCiv.popupAlerts.add(PopupAlert(AlertType.CityConquered, city.id))
         } else automateCityConquer(attackerCiv, city)

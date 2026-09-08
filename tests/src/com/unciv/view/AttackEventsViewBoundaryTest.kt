@@ -70,7 +70,7 @@ class AttackEventsViewBoundaryTest {
         val publicFunctions = AttackEventsView::class.declaredMemberFunctions.filter {
             it.visibility == KVisibility.PUBLIC
         }
-        assertEquals(setOf("getObservedAttacks", "getCombatReports", "getCaptureReports", "getCombatantForTrigger"),
+        assertEquals(setOf("getObservedAttacks", "getCombatReports", "getCombatReportEntries", "getCaptureReports", "getCombatantForTrigger"),
             publicFunctions.map { it.name }.toSet())
         val query = publicFunctions.single { it.name == "getObservedAttacks" }
         assertEquals(List::class, query.returnType.classifier)
@@ -81,6 +81,7 @@ class AttackEventsViewBoundaryTest {
         assertTrue(argument.isOptional)
 
         for ((name, resultType) in mapOf("getCombatReports" to ObservedCombatReport::class,
+            "getCombatReportEntries" to ObservedCombatReportEntry::class,
             "getCaptureReports" to ObservedAttackResult::class)) {
             val reportQuery = publicFunctions.single { it.name == name }
             assertEquals(List::class, reportQuery.returnType.classifier)
@@ -382,13 +383,14 @@ class AttackEventsViewBoundaryTest {
         private val combatEntryPoints = setOf("${battlePackage}Battle.attack", "${battlePackage}Nuke.NUKE",
             "${battlePackage}AirInterception.airSweep")
         private val trustedOperationCallers = mapOf(
-            "$gameInfoClass.storeAttack" to combatEntryPoints,
+            "$gameInfoClass.storeAttack" to combatEntryPoints + "${battlePackage}BattleUnitCapture.publishCaptureNotification",
             "$attackRecorderClass.finish" to combatEntryPoints,
             "$attackRecorderClass.finishIncomplete" to combatEntryPoints,
             "$gameInfoClass.publishAttackNotifications" to combatEntryPoints,
             "$gameInfoClass.createAttackEventView" to setOf("$gameInfoClass.publishAttackNotifications",
                 "${battlePackage}Battle.enemyNameForNotification", "${battlePackage}BattleUnitCapture.publishCaptureNotification"),
-            "$notificationPublisherClass.create" to setOf("$gameInfoClass.publishAttackNotifications"),
+            "$notificationPublisherClass.create" to setOf("$gameInfoClass.publishAttackNotifications",
+                "$notificationPublisherClass.create", "$attackViewClass.getCombatReportEntries"),
             "$notificationPublisherClass.createCapture" to setOf("${battlePackage}BattleUnitCapture.publishCaptureNotification"),
             "$gameInfoClass.expireAttackEventsFor" to setOf("com/unciv/logic/civilization/managers/TurnManager.startTurn"),
             "$gameInfoClass.createAttackEventsView" to setOf("$gameViewClass.<init>"),
@@ -398,7 +400,7 @@ class AttackEventsViewBoundaryTest {
         private val trustedStorageCallers = mapOf(
             "$gameInfoClass.attackEvents" to setOf("<init>", "clone", "storeAttack", "expireAttackEventsFor",
                 "createAttackEventsView").map { "$gameInfoClass.$it" }.toSet(),
-            "$attackViewClass.events" to setOf("<init>", "getObservedAttacks", "getCombatReports",
+            "$attackViewClass.events" to setOf("<init>", "getObservedAttacks", "getCombatReports", "getCombatReportEntries",
                 "getCaptureReports", "getCombatantForTrigger").map { "$attackViewClass.$it" }.toSet(),
         )
     }

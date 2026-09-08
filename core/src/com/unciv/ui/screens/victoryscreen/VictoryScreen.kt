@@ -10,6 +10,7 @@ import com.unciv.UncivGame
 import com.unciv.logic.GameInfo
 import com.unciv.logic.VictoryData
 import com.unciv.logic.civilization.Civilization
+import com.unciv.logic.civilization.PlayerOperations
 import com.unciv.models.metadata.GameSetupInfo
 import com.unciv.models.ruleset.Victory
 import com.unciv.models.translations.tr
@@ -124,7 +125,7 @@ class VictoryScreen(
             gameInfo.victoryData != null ->
                 displayWinner(gameInfo.victoryData!!)
             playerCiv.isDefeated() -> {
-                displayWonOrLost(Victory().defeatString)
+                displayWonOrLost(PlayerOperations(playerCiv).gameResult()!!.title)
                 music.chooseTrack(playerCiv.civName, MusicMood.Defeat, EnumSet.of(MusicTrackChooserFlags.SuffixMustMatch))
             }
             else -> {
@@ -168,13 +169,14 @@ class VictoryScreen(
         val winningCiv = victoryData.winningCivObject
         val victory = gameInfo.ruleset.victories[victoryType]
             ?: Victory()  // This contains our default victory/defeat texts
+        val result = PlayerOperations(playerCiv).gameResult()
+        if (result != null) displayWonOrLost(result.title, *result.paragraphs.toTypedArray())
+        else displayWonOrLost("[${winningCiv.civName}] has won a [$victoryType] Victory!", victory.defeatString)
         if (winningCiv.civID == playerCiv.civID) {
-            displayWonOrLost("You have won a [$victoryType] Victory!", victory.victoryString)
             if (!music.chooseTrack(victory.name, MusicMood.Victory, EnumSet.of(MusicTrackChooserFlags.PrefixMustMatch, MusicTrackChooserFlags.SuffixMustMatch))) {
                 music.chooseTrack(playerCiv.civName, listOf(MusicMood.Victory, MusicMood.Theme), EnumSet.of(MusicTrackChooserFlags.SuffixMustMatch))
             }
         } else {
-            displayWonOrLost("[${winningCiv.civName}] has won a [$victoryType] Victory!", victory.defeatString)
             if (!music.chooseTrack(victory.name, MusicMood.Defeat, EnumSet.of(MusicTrackChooserFlags.PrefixMustMatch, MusicTrackChooserFlags.SuffixMustMatch))) {
                 music.chooseTrack(playerCiv.civName, MusicMood.Defeat, EnumSet.of(MusicTrackChooserFlags.SuffixMustMatch))
             }

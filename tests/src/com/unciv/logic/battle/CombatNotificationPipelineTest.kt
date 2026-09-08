@@ -2,13 +2,19 @@ package com.unciv.logic.battle
 
 import com.badlogic.gdx.utils.JsonReader
 import com.unciv.json.json
+import com.unciv.logic.GameInfo
 import com.unciv.logic.civilization.Notification
+import com.unciv.logic.civilization.AlertType
+import com.unciv.logic.civilization.CaptureChoice
+import com.unciv.logic.civilization.PlayerCaptureOperations
 import com.unciv.logic.map.HexCoord
 import com.unciv.logic.map.mapunit.MapUnit
 import com.unciv.models.ruleset.unique.UniqueType
 import com.unciv.testing.BaseTestRunner
 import com.unciv.testing.TestGame
 import com.unciv.testing.attackEventsForTesting
+import com.unciv.testing.storeAttackForTesting
+import com.unciv.view.GameView
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
@@ -162,6 +168,10 @@ class CombatNotificationPipelineTest {
         defendingCiv.notifications.clear()
 
         Battle.attack(MapUnitCombatant(attacker), CityCombatant(city))
+        game.currentPlayerCiv = attackingCiv
+        game.currentPlayer = attackingCiv.civID
+        val decision = attackingCiv.popupAlerts.single { it.type == AlertType.CityConquered }
+        assertTrue(PlayerCaptureOperations(attackingCiv).tryResolve(decision, CaptureChoice.Puppet))
         city.name = "Renamed after conquest"
 
         assertEquals(attackingCiv, city.civ)
@@ -302,6 +312,49 @@ class CombatNotificationPipelineTest {
         val notification = defendingCiv.notifications.single { "has captured" in it.text }
         assertTrue(notification.text.contains("[Embarked builders]"))
         assertEquals(listOf(target.position), locations(notification))
-        assertTrue(game.attackEventsForTesting.isEmpty())
+        val event = game.attackEventsForTesting.single()
+        assertEquals(target.position, event.target)
+        assertEquals(AttackParticipantOutcome.Captured, event.targets.single().outcome)
+    }
+
+    @Test
+    fun `delivered capture report identities and text survive cloning and serialization`() {
+        val attacker = testGame.addUnit("Warrior", attackingCiv, testGame.getTile(2, 0))
+        val worker = testGame.addUnit("Worker", defendingCiv, target)
+        BattleUnitCapture.captureCivilianUnit(MapUnitCombatant(attacker), MapUnitCombatant(worker))
+        val expected = GameView(game, defendingCiv).attackEventsView.getCombatReportEntries()
+        assertEquals(1, expected.size)
+        assertTrue(expected.single().text!!.contains("captured"))
+        for (copy in listOf(game.clone(), json().fromJson(GameInfo::class.java, json().toJson(game)))) {
+            copy.ruleset = game.ruleset
+            val viewer = copy.civilizations.single { it.civID == defendingCiv.civID }
+            viewer.gameInfo = copy
+            viewer.nation = defendingCiv.nation
+            assertEquals(expected, GameView(copy, viewer).attackEventsView.getCombatReportEntries())
+        }
+    }
+
+    @Test
+    fun `invisible events and other owners collateral do not change delivered report identities`() {
+        val attacker = testGame.addUnit("Warrior", attackingCiv, testGame.getTile(2, 0))
+        val worker = testGame.addUnit("Worker", defendingCiv, target)
+        BattleUnitCapture.captureCivilianUnit(MapUnitCombatant(attacker), MapUnitCombatant(worker))
+        val view = GameView(game, defendingCiv).attackEventsView
+        val expected = view.getCombatReportEntries()
+        val event = game.attackEventsForTesting.single()
+        val unrelated = AttackParticipant(MapUnitCombatant(attacker)).apply {
+            captureAttempted = true
+            outcome = AttackParticipantOutcome.Captured
+        }
+        // A foreign collateral participant has no report for this recipient and must not
+        // appear as a gap in the identifiers of the permitted entries.
+        event.targets.add(0, unrelated)
+        val invisibleEvent = AttackEvent(MapUnitCombatant(attacker), target).apply {
+            resolution = AttackResolution.Completed
+            targets.add(unrelated.clone())
+        }
+        game.storeAttackForTesting(invisibleEvent)
+        assertNotEquals(event.id, invisibleEvent.id)
+        assertEquals(expected, view.getCombatReportEntries())
     }
 }

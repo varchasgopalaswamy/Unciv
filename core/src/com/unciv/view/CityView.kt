@@ -200,13 +200,14 @@ class CityView(city: City,
     }
     fun tryAnnexCity(): Boolean {
         if (!canChangeState()) return false
-        city.annexCity()
-        return true
+        return com.unciv.logic.civilization.PlayerCaptureOperations(viewer, spectatorMode)
+            .tryManageCity(city, com.unciv.logic.civilization.CaptureChoice.Annex)
     }
     fun trySetRazing(raze: Boolean): Boolean {
         if (!canChangeState()) return false
-        city.isBeingRazed = raze
-        return true
+        return com.unciv.logic.civilization.PlayerCaptureOperations(viewer, spectatorMode)
+            .tryManageCity(city, if (raze) com.unciv.logic.civilization.CaptureChoice.Raze
+                else com.unciv.logic.civilization.CaptureChoice.StopRazing)
     }
     fun tryAddToQueueWithTile(construction: IConstruction, tileView: TileView): Boolean {
         if (!canChangeState()) return false

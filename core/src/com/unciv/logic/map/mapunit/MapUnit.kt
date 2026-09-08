@@ -984,7 +984,8 @@ class MapUnit : IsPartOfGameInfoSerialization {
         }
     }
 
-    fun moveThroughTile(tile: Tile) {
+    /** [attackRecorder] attaches captures during combat advancement to the enclosing attack. */
+    fun moveThroughTile(tile: Tile, attackRecorder: AttackRecorder? = null) {
         // addPromotion requires currentTile to be valid because it accesses ruleset through it.
         // getAncientRuinBonus, if it places a new unit, does too
         currentTile = tile
@@ -1011,7 +1012,7 @@ class MapUnit : IsPartOfGameInfoSerialization {
         val unguardedCivilian = tile.getUnguardedCivilian(this)
         // Capture Enemy Civilian Unit if you move on top of it
         if (isMilitary() && unguardedCivilian != null && civ.isAtWarWith(unguardedCivilian.civ)) {
-            BattleUnitCapture.captureCivilianUnit(MapUnitCombatant(this), MapUnitCombatant(tile.civilianUnit!!))
+            BattleUnitCapture.captureCivilianUnit(MapUnitCombatant(this), MapUnitCombatant(tile.civilianUnit!!), attackRecorder = attackRecorder)
         }
 
         val promotionUniques = tile.neighbors
@@ -1026,7 +1027,7 @@ class MapUnit : IsPartOfGameInfoSerialization {
         updateVisibleTiles(true, currentTile.position)
     }
 
-    fun putInTile(tile: Tile) {
+    fun putInTile(tile: Tile, attackRecorder: AttackRecorder? = null) {
         when {
             !movement.canMoveTo(tile) -> {
                 val currentTile = if (hasTile()) currentTile else null
@@ -1045,7 +1046,7 @@ class MapUnit : IsPartOfGameInfoSerialization {
                 isTransported = currentUntransportedUnits > tile.getCity()!!.getMaxAirUnits()
             }
         }
-        moveThroughTile(tile)
+        moveThroughTile(tile, attackRecorder)
         cache.updateUniques()
     }
 

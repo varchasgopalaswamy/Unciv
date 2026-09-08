@@ -8,11 +8,13 @@ import com.unciv.view.ObservedInterception
 import com.unciv.view.ObservedNuclearDetonation
 import com.unciv.view.ObservedUnopposedAirSweep
 import com.unciv.view.ObservedWithdrawal
+import com.unciv.view.ObservedCombatReport
 
 /** Formats only the facts permitted by the recipient's View. No publisher can read raw attack records. */
 internal object AttackNotifications {
-    fun create(view: AttackEventsView): List<Notification> = view.getCombatReports().mapNotNull { report ->
-        when (report) {
+    fun create(view: AttackEventsView): List<Notification> = view.getCombatReports().mapNotNull(::create)
+
+    fun create(report: ObservedCombatReport): Notification? = when (report) {
             is ObservedAttackResult -> AttackResultNotifications.create(report)
             is ObservedInterception -> AirInterceptionNotifications.create(report)
             is ObservedNuclearDetonation -> NuclearAttackNotifications.create(report)
@@ -20,7 +22,6 @@ internal object AttackNotifications {
             is ObservedWithdrawal -> CombatEffectNotifications.create(report)
             is ObservedImprovementDestruction -> CombatEffectNotifications.create(report)
         }
-    }
 
     /** Captures can also happen during movement, without a stored combat event. */
     fun createCapture(view: AttackEventsView): List<Notification> =

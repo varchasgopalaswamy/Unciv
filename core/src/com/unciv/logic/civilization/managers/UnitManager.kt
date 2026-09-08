@@ -1,6 +1,7 @@
 package com.unciv.logic.civilization.managers
 
 import com.unciv.GUI
+import com.unciv.logic.battle.AttackRecorder
 import com.unciv.logic.city.City
 import com.unciv.logic.civilization.Civilization
 import com.unciv.logic.civilization.MapUnitAction
@@ -90,9 +91,9 @@ class UnitManager(val civInfo: Civilization) {
      * @param unitName name of the [BaseUnit] to create and place
      * @return created [MapUnit] or null if no suitable location was found
      * */
-    fun placeUnitNearTile(location: HexCoord, unitName: String): MapUnit? {
+    fun placeUnitNearTile(location: HexCoord, unitName: String, attackRecorder: AttackRecorder? = null): MapUnit? {
         val unit = civInfo.gameInfo.ruleset.units[unitName]!!
-        return placeUnitNearTile(location, unit)
+        return placeUnitNearTile(location, unit, attackRecorder = attackRecorder)
     }
 
     /** Tries to place the a [baseUnit] unit into the [Tile] closest to the given the [location]
@@ -100,8 +101,8 @@ class UnitManager(val civInfo: Civilization) {
      * @param baseUnit [BaseUnit] to create and place
      * @return created [MapUnit] or null if no suitable location was found
      * */
-    fun placeUnitNearTile(location: HexCoord, baseUnit: BaseUnit, unitId: Int? = null, copiedFrom: MapUnit? = null): MapUnit? {
-        val unit = civInfo.gameInfo.tileMap.placeUnitNearTile(location, baseUnit, civInfo, unitId)
+    fun placeUnitNearTile(location: HexCoord, baseUnit: BaseUnit, unitId: Int? = null, copiedFrom: MapUnit? = null, attackRecorder: AttackRecorder? = null): MapUnit? {
+        val unit = civInfo.gameInfo.tileMap.placeUnitNearTile(location, baseUnit, civInfo, unitId, attackRecorder)
 
         if (unit == null) return unit
         

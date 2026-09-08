@@ -17,6 +17,9 @@ sealed interface ObservedCombatReport {
     val turn: Int
 }
 
+/** Identity is opaque; ordinals count only reports permitted to this viewer. */
+data class ObservedCombatReportEntry(val id: String, val report: ObservedCombatReport, val text: String?)
+
 data class ObservedAttackResult(
     override val turn: Int,
     val attacker: ObservedCombatant,

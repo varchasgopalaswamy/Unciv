@@ -4,6 +4,7 @@ import com.badlogic.gdx.math.Rectangle
 import com.badlogic.gdx.math.Vector2
 import com.unciv.logic.GameInfo
 import com.unciv.logic.IsPartOfGameInfoSerialization
+import com.unciv.logic.battle.AttackRecorder
 import com.unciv.logic.civilization.Civilization
 import com.unciv.logic.map.mapgenerator.MapLandmassGenerator
 import com.unciv.logic.map.mapunit.MapUnit
@@ -679,7 +680,8 @@ class TileMap(initialCapacity: Int = 10) : IsPartOfGameInfoSerialization {
             position: HexCoord,
             baseUnit: BaseUnit,
             civInfo: Civilization,
-            unitId: Int? = null
+            unitId: Int? = null,
+            attackRecorder: AttackRecorder? = null
     ): MapUnit? {
         val unit = baseUnit.newMapUnit(civInfo, unitId)
 
@@ -738,7 +740,7 @@ class TileMap(initialCapacity: Int = 10) : IsPartOfGameInfoSerialization {
         }
 
         // only once we know the unit can be placed do we add it to the civ's unit list
-        unit.putInTile(unitToPlaceTile)
+        unit.putInTile(unitToPlaceTile, attackRecorder)
         unit.currentMovement = unit.getMaxMovement().toFloat()
         unit.addMovementMemory()
 

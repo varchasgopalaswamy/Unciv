@@ -5,19 +5,16 @@ import com.badlogic.gdx.scenes.scene2d.ui.ScrollPane
 import com.badlogic.gdx.scenes.scene2d.ui.Table
 import com.unciv.Constants
 import com.unciv.UncivGame
-import com.unciv.logic.battle.BattleUnitCapture
 import com.unciv.logic.city.City
 import com.unciv.logic.civilization.AlertType
 import com.unciv.logic.civilization.Civilization
-import com.unciv.logic.civilization.CivilopediaAction
-import com.unciv.logic.civilization.DiplomacyAction
-import com.unciv.logic.civilization.LocationAction
+import com.unciv.logic.civilization.CaptureChoice
+import com.unciv.logic.civilization.PlayerCaptureOperations
 import com.unciv.logic.civilization.NotificationCategory
 import com.unciv.logic.civilization.NotificationIcon
 import com.unciv.logic.civilization.PlayerOperations
 import com.unciv.logic.civilization.PopupAlert
 import com.unciv.logic.civilization.diplomacy.*
-import com.unciv.logic.map.HexCoord
 import com.unciv.logic.map.mapunit.MapUnit
 import com.unciv.models.ruleset.unique.UniqueType
 import com.unciv.models.translations.fillPlaceholders
@@ -200,35 +197,21 @@ class AlertPopup(
     }
 
     private fun addCityConquered() {
-        val city = getCity(popupAlert.value)
-        addQuestionAboutTheCity(city.name)
-        val conqueringCiv = gameInfo.getCurrentPlayerCivilization()
-
-        if (city.foundingCivObject != null
-                && city.civ != city.foundingCivObject // can't liberate if the city actually belongs to those guys
-                && conqueringCiv != city.foundingCivObject) { // or belongs originally to us
-            addLiberateOption(city, conqueringCiv)
-            addSeparator()
-        }
-
-        if (conqueringCiv.isOneCityChallenger()) {
-            addDestroyOption {
-                city.puppetCity(conqueringCiv)
-                city.destroyCity()
+        val operations = PlayerCaptureOperations(viewingCiv)
+        val decision = operations.captureDecision(popupAlert) ?: return
+        addGoodSizedLabel(decision.title, Constants.headingFontSize, hideIcons = true).padBottom(20f).row()
+        for ((index, option) in decision.options.withIndex()) {
+            if (index != 0) addSeparator()
+            val button = option.label.toTextButton()
+            if (option.unavailableReasons.isNotEmpty()) button.disable()
+            else {
+                button.onActivation {
+                    if (operations.tryResolve(popupAlert, option.choice)) close()
+                }
+                button.keyShortcuts.add(option.choice.name.first().lowercaseChar())
             }
-        } else {
-            val mayAnnex = !conqueringCiv.hasUnique(UniqueType.MayNotAnnexCities)
-            addAnnexOption(city, mayAnnex = mayAnnex) {
-                city.puppetCity(conqueringCiv)
-            }
-            addSeparator()
-
-            addPuppetOption(mayAnnex = mayAnnex) {
-                city.puppetCity(conqueringCiv)
-            }
-            addSeparator()
-
-            addRazeOption(city, mayAnnex = mayAnnex, conqueringCiv)
+            add(button).row()
+            option.paragraphs.forEach { addGoodSizedLabel(it).row() }
         }
     }
 
@@ -299,10 +282,11 @@ class AlertPopup(
     }
     
     private fun addDefeated() {
+        val content = PlayerOperations(viewingCiv).informationalPopupContent(popupAlert) ?: return
         val civInfo = getCiv(popupAlert.value)
         addLeaderName(civInfo)
-        addGoodSizedLabel(civInfo.nation.defeated).row()
-        addCloseButton("Farewell.")
+        content.paragraphs.forEach { addGoodSizedLabel(it).row() }
+        addCloseButton(content.acknowledgement)
         music.chooseTrack(civInfo.civName, MusicMood.Defeat, EnumSet.of(MusicTrackChooserFlags.SuffixMustMatch))
         music.playVoice("${civInfo.civName}.defeated")
     }
@@ -399,10 +383,10 @@ class AlertPopup(
     }
 
     private fun addGameHasBeenWon() {
-        val victoryData = gameInfo.victoryData!!
-        addGoodSizedLabel("[${victoryData.winningCivObject.civName}] has won a [${victoryData.victoryType}] Victory!").row()
+        val content = PlayerOperations(viewingCiv).informationalPopupContent(popupAlert) ?: return
+        addGoodSizedLabel(content.title).row()
         addButton("Victory status") { close(); worldScreen.game.pushScreen{ VictoryScreen(worldScreen) } }.row()
-        addCloseButton()
+        addCloseButton(content.acknowledgement)
     }
 
     private fun addGoldenAge(): Boolean {
@@ -417,50 +401,17 @@ class AlertPopup(
 
     /** @return false to skip opening this Popup, as we're running in the initialization phase before the Popup is open */
     private fun addRecapturedCivilian(): Boolean {
-        val position = HexCoord.fromString(popupAlert.value)
-        val tile = gameInfo.tileMap[position]
-        val capturedUnit = tile.civilianUnit  // This has got to be it
-            ?: return false // the unit disappeared somehow? maybe a modded action?
-        val originalOwner = capturedUnit.originalOwningCiv!!
-        if (originalOwner.isDefeated()) return false
-        val captor = viewingCiv
-
-        addGoodSizedLabel("Return [${capturedUnit.name}] to [${originalOwner.civName}]?")
+        val operations = PlayerCaptureOperations(viewingCiv)
+        val decision = operations.captureDecision(popupAlert) ?: return false
+        addGoodSizedLabel(decision.title)
         addSeparator().padBottom(SEPARATOR_LINE_TO_TEXT_PADDING)
-        addGoodSizedLabel("The [${capturedUnit.name}] we liberated originally belonged to [${originalOwner.civName}]. They will be grateful if we return it to them.").row()
-
-        bottomTable.defaults().pad(0f, 30f) // Small buttons, plenty of pad so we don't fat-finger it
-
-        addCloseButton(Constants.yes, KeyboardBinding.Confirm) {
-            // Return it to original owner
-            val unitName = capturedUnit.baseUnit.name
-            capturedUnit.destroy()
-            val closestCity = originalOwner.cities.minByOrNull { it.getCenterTile().aerialDistanceTo(tile) }
-
-            if (closestCity != null) {
-                // Attempt to place the unit near their nearest city
-                originalOwner.units.placeUnitNearTile(closestCity.location.toHexCoord(), unitName)
+        decision.paragraphs.forEach { addGoodSizedLabel(it).row() }
+        bottomTable.defaults().pad(0f, 30f)
+        for (option in decision.options) {
+            val binding = if (option.choice == CaptureChoice.ReturnCivilian) KeyboardBinding.Confirm else KeyboardBinding.Cancel
+            addButton(option.label, binding) {
+                if (operations.tryResolve(popupAlert, option.choice)) close()
             }
-
-            if (originalOwner.isCityState) {
-                originalOwner.getDiplomacyManagerOrMeet(captor).addInfluence(45f)
-            } else if (originalOwner.isMajorCiv()) {
-                // No extra bonus from doing it several times
-                originalOwner.getDiplomacyManagerOrMeet(captor)
-                    .setModifier(DiplomaticModifiers.ReturnedCapturedUnits, 20f)
-            }
-            val notificationSequence = sequence {
-                yield(LocationAction(tile.position))
-                if (closestCity != null)
-                    yield(LocationAction(closestCity.location))
-                yield(DiplomacyAction(captor))
-                yield(CivilopediaAction("Tutorial/Barbarians"))
-            }
-            originalOwner.addNotification("Your captured [${unitName}] has been returned by [${captor.civName}]", notificationSequence, NotificationCategory.Diplomacy, NotificationIcon.Trade, unitName, captor.civName)
-        }
-        addCloseButton(Constants.no, KeyboardBinding.Cancel) {
-            // Take it for ourselves
-            BattleUnitCapture.captureOrConvertToWorker(capturedUnit, captor)
         }
         return true
     }
@@ -620,34 +571,6 @@ class AlertPopup(
         button.keyShortcuts.add('l')
         add(button).row()
         addGoodSizedLabel("Liberating a city returns it to its original owner, giving you a massive relationship boost with them!")
-    }
-
-    private fun addRazeOption(city: City, mayAnnex: Boolean, conqueringCiv: Civilization) {
-        val canRaze = city.canBeDestroyed(justCaptured = true)
-        val button = "Raze".toTextButton()
-        button.apply {
-            if (!canRaze) disable()
-            else {
-                onActivation {
-                    city.puppetCity(conqueringCiv)
-                    if (mayAnnex) { city.annexCity() }
-                    city.isBeingRazed = true
-                    close()
-                }
-                keyShortcuts.add('r')
-            }
-        }
-        add(button).row()
-        if (canRaze) {
-            if (mayAnnex) {
-                addGoodSizedLabel("Razing the city annexes it, and starts burning the city to the ground.").row()
-            } else {
-                addGoodSizedLabel("Razing the city puppets it, and starts burning the city to the ground.").row()
-            }
-            addGoodSizedLabel("The population will gradually dwindle until the city is destroyed.").row()
-        } else {
-            addGoodSizedLabel("Original capitals and holy cities cannot be razed.").row()
-        }
     }
 
     /** Returns if event was triggered correctly */
