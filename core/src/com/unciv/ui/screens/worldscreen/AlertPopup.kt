@@ -14,6 +14,7 @@ import com.unciv.logic.civilization.DiplomacyAction
 import com.unciv.logic.civilization.LocationAction
 import com.unciv.logic.civilization.NotificationCategory
 import com.unciv.logic.civilization.NotificationIcon
+import com.unciv.logic.civilization.PlayerOperations
 import com.unciv.logic.civilization.PopupAlert
 import com.unciv.logic.civilization.diplomacy.*
 import com.unciv.logic.map.HexCoord
@@ -100,7 +101,7 @@ class AlertPopup(
             AlertType.CityTraded -> addCityTraded()
             AlertType.DiplomaticMarriage -> addDiplomaticMarriage()
             // Demands and diplomacy
-            AlertType.FirstContact -> addFirstContact()
+            AlertType.FirstContact -> shouldOpen = addFirstContact()
             AlertType.WarDeclaration -> shouldOpen = addWarDeclaration()
             AlertType.BorderConflict -> shouldOpen = addBorderConflict()
             AlertType.TilesStolen -> shouldOpen = addTilesStolen()
@@ -123,10 +124,10 @@ class AlertPopup(
                 shouldOpen = addBulliedOrAttackedProtectedOrAlliedMinor()
             AlertType.Defeated -> addDefeated()
             // We did stuff
-            AlertType.WonderBuilt -> addWonderBuilt()
-            AlertType.TechResearched -> addTechResearched()
-            AlertType.GoldenAge -> addGoldenAge()
-            AlertType.StartIntro -> addStartIntro()
+            AlertType.WonderBuilt -> shouldOpen = addWonderBuilt()
+            AlertType.TechResearched -> shouldOpen = addTechResearched()
+            AlertType.GoldenAge -> shouldOpen = addGoldenAge()
+            AlertType.StartIntro -> shouldOpen = addStartIntro()
             AlertType.RecapturedCivilian -> shouldOpen = addRecapturedCivilian()
             AlertType.GameHasBeenWon -> addGameHasBeenWon()
             AlertType.Event -> shouldOpen = addEvent()
@@ -386,19 +387,15 @@ class AlertPopup(
         }
     }
 
-    private fun addFirstContact() {
+    private fun addFirstContact(): Boolean {
+        val content = PlayerOperations(viewingCiv).informationalPopupContent(popupAlert) ?: return false
         val civInfo = getCiv(popupAlert.value)
-        val nation = civInfo.nation
         addLeaderName(civInfo)
         music.chooseTrack(civInfo.civName, MusicMood.themeOrPeace, MusicTrackChooserFlags.setSpecific)
         music.playVoice("${civInfo.civName}.introduction")
-        if (civInfo.isCityState) {
-            addGoodSizedLabel("We have encountered the City-State of [${nation.name}]!").row()
-            addCloseButton("Excellent!")
-        } else {
-            addGoodSizedLabel(nation.introduction).row()
-            addCloseButton("A pleasure to meet you.")
-        }
+        content.paragraphs.forEach { addGoodSizedLabel(it).row() }
+        addCloseButton(content.acknowledgement)
+        return true
     }
 
     private fun addGameHasBeenWon() {
@@ -408,12 +405,14 @@ class AlertPopup(
         addCloseButton()
     }
 
-    private fun addGoldenAge() {
-        addGoodSizedLabel("GOLDEN AGE")
+    private fun addGoldenAge(): Boolean {
+        val content = PlayerOperations(viewingCiv).informationalPopupContent(popupAlert) ?: return false
+        addGoodSizedLabel(content.title)
         addSeparator().padBottom(SEPARATOR_LINE_TO_TEXT_PADDING)
-        addGoodSizedLabel("Your citizens have been happy with your rule for so long that the empire enters a Golden Age!").row()
-        addCloseButton()
+        content.paragraphs.forEach { addGoodSizedLabel(it).row() }
+        addCloseButton(content.acknowledgement)
         music.chooseTrack(viewingCiv.civName, MusicMood.Golden, MusicTrackChooserFlags.setSpecific)
+        return true
     }
 
     /** @return false to skip opening this Popup, as we're running in the initialization phase before the Popup is open */
@@ -466,31 +465,33 @@ class AlertPopup(
         return true
     }
 
-    private fun addStartIntro() {
+    private fun addStartIntro(): Boolean {
+        val content = PlayerOperations(viewingCiv).informationalPopupContent(popupAlert) ?: return false
         val civInfo = viewingCiv
         addLeaderName(civInfo)
-        addGoodSizedLabel(civInfo.nation.startIntroPart1).row()
-        addGoodSizedLabel(civInfo.nation.startIntroPart2).row()
-        addCloseButton("Let's begin!")
+        content.paragraphs.forEach { addGoodSizedLabel(it).row() }
+        addCloseButton(content.acknowledgement)
 
         // Since there's introduction text, play the startIntroPart1 voice hook with the nation's theme.
         val music = UncivGame.Current.musicController
         music.chooseTrack(civInfo.nation.name, MusicMood.themeOrPeace, MusicTrackChooserFlags.setSpecific)
         music.playVoice("${civInfo.nation.name}.startIntroPart1")
+        return true
     }
 
-    private fun addTechResearched() {
-        val tech = gameInfo.ruleset.technologies[popupAlert.value]!!
-        addGoodSizedLabel(tech.name)
+    private fun addTechResearched(): Boolean {
+        val content = PlayerOperations(viewingCiv).informationalPopupContent(popupAlert) ?: return false
+        addGoodSizedLabel(content.title)
         addSeparator().padBottom(SEPARATOR_LINE_TO_TEXT_PADDING)
         val centerTable = Table()
-        centerTable.add(tech.quote.toLabel().apply { wrap = true }).width(stageWidth / 3)
-        centerTable.add(ImageGetter.getTechIconPortrait(tech.name, 100f)).pad(20f)
-        val descriptionScroll = ScrollPane(tech.getDescription(viewingCiv).toLabel().apply { wrap = true })
+        centerTable.add(content.quote.orEmpty().toLabel().apply { wrap = true }).width(stageWidth / 3)
+        centerTable.add(ImageGetter.getTechIconPortrait(popupAlert.value, 100f)).pad(20f)
+        val descriptionScroll = ScrollPane(content.paragraphs.joinToString("\n\n").toLabel().apply { wrap = true })
         centerTable.add(descriptionScroll).width(stageWidth / 3).maxHeight(stageHeight / 2)
         add(centerTable).row()
-        addCloseButton()
-        music.chooseTrack(tech.name, MusicMood.Researched, MusicTrackChooserFlags.setSpecific)
+        addCloseButton(content.acknowledgement)
+        music.chooseTrack(popupAlert.value, MusicMood.Researched, MusicTrackChooserFlags.setSpecific)
+        return true
     }
 
     private fun addWarDeclaration(): Boolean {
@@ -515,40 +516,42 @@ class AlertPopup(
             .padBottom(20f).row()
     }
 
-    private fun addWonderBuilt() {
-        val wonder = gameInfo.ruleset.buildings[popupAlert.value]!!
-        addGoodSizedLabel(wonder.name)
+    private fun addWonderBuilt(): Boolean {
+        val content = PlayerOperations(viewingCiv).informationalPopupContent(popupAlert) ?: return false
+        val wonderName = popupAlert.value
+        addGoodSizedLabel(content.title)
         addSeparator().padBottom(10f)
-        if(ImageGetter.wonderImageExists(wonder.name)) {    // Wonder Graphic exists
+        if(ImageGetter.wonderImageExists(wonderName)) {    // Wonder Graphic exists
             if(stageHeight * 3 > stageWidth * 4) {    // Portrait
-                add(ImageGetter.getWonderImage(wonder.name))
+                add(ImageGetter.getWonderImage(wonderName))
                     .width(stageWidth / 1.5f)
                     .height(stageWidth / 3)
                     .row()
             }
             else {  // Landscape (or squareish)
-                add(ImageGetter.getWonderImage(wonder.name))
+                add(ImageGetter.getWonderImage(wonderName))
                     .width(stageWidth / 2.5f)
                     .height(stageWidth / 5)
                     .row()
             }
         } else {    // Fallback
-            add(ImageGetter.getConstructionPortrait(wonder.name, 100f)).pad(20f).row()
+            add(ImageGetter.getConstructionPortrait(wonderName, 100f)).pad(20f).row()
         }
 
         val centerTable = Table()
-        val centerTableColumnWidth = stageWidth / if (wonder.quote.isEmpty()) 2 else 3
-        if (wonder.quote.isNotEmpty()) {
-            centerTable.add(wonder.quote.toLabel().apply { wrap = true })
+        val centerTableColumnWidth = stageWidth / if (content.quote == null) 2 else 3
+        if (content.quote != null) {
+            centerTable.add(content.quote.toLabel().apply { wrap = true })
                 .width(centerTableColumnWidth)
                 .pad(10f)
         }
-        centerTable.add(wonder.getShortDescription().toLabel().apply { wrap = true })
+        centerTable.add(content.paragraphs.joinToString("\n\n").toLabel().apply { wrap = true })
             .width(centerTableColumnWidth)
             .pad(10f)
         add(centerTable).row()
-        addCloseButton()
-        music.chooseTrack(wonder.name, MusicMood.Wonder, MusicTrackChooserFlags.setSpecific)
+        addCloseButton(content.acknowledgement)
+        music.chooseTrack(wonderName, MusicMood.Wonder, MusicTrackChooserFlags.setSpecific)
+        return true
     }
 
     //endregion
@@ -675,8 +678,8 @@ class AlertPopup(
     //endregion
 
     override fun close() {
-        if (popupAlert.type in com.unciv.logic.civilization.PlayerOperations.informationalAlerts) {
-            com.unciv.logic.civilization.PlayerOperations(viewingCiv).tryAcknowledgeAlert(popupAlert)
+        if (popupAlert.type in PlayerOperations.informationalAlerts) {
+            PlayerOperations(viewingCiv).tryAcknowledgeAlert(popupAlert)
         } else viewingCiv.popupAlerts.remove(popupAlert)
         worldScreen.shouldUpdate = true
         super.close()

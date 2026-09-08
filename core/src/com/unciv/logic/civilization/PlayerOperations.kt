@@ -1,11 +1,13 @@
 package com.unciv.logic.civilization
 
+import com.unciv.Constants
 import com.unciv.logic.city.City
 import com.unciv.logic.map.mapunit.MapUnit
 import com.unciv.models.ruleset.Building
 import com.unciv.models.ruleset.IConstruction
 import com.unciv.models.ruleset.PerpetualConstruction
 import yairm210.purity.annotations.Readonly
+import java.util.Collections
 
 /** Validated operations for an ordinary human-controlled civilization.
  *
@@ -71,7 +73,10 @@ class PlayerOperations(private val civ: Civilization, private val spectatorMode:
     }
 
     companion object {
-        val informationalAlerts = setOf(AlertType.TechResearched, AlertType.GoldenAge, AlertType.StartIntro, AlertType.WonderBuilt)
+        val informationalAlerts = setOf(
+            AlertType.TechResearched, AlertType.GoldenAge, AlertType.StartIntro,
+            AlertType.WonderBuilt, AlertType.FirstContact,
+        )
 
         /** Matches the ordinary city-name popup, including its single-line text field. */
         @Readonly
@@ -106,8 +111,86 @@ class PlayerOperations(private val civ: Civilization, private val spectatorMode:
         true
     }
 
+    /** The introduction already earned by meeting a civilization, available even out of turn.
+     *
+     * Discovery performs the meeting effects before adding this alert. Reading or
+     * acknowledging it must not meet the civilization again or repeat city-state gifts.
+     */
+    @Readonly
+    fun firstContactIntroduction(alert: PopupAlert): FirstContactIntroduction? = synchronized(civ.gameInfo) {
+        if (spectatorMode || civ.isSpectator() || alert.type != AlertType.FirstContact ||
+            civ.gameInfo.civilizations.none { it === civ } || civ.popupAlerts.none { it === alert })
+            return@synchronized null
+        val other = civ.gameInfo.civilizations.firstOrNull { it.civID == alert.value }
+            ?: return@synchronized null
+        if (!civ.knows(other) || other.isSpectator() || other.isBarbarian) return@synchronized null
+        FirstContactIntroduction(
+            civilizationId = other.civID,
+            civilizationName = other.civName,
+            leaderName = other.getLeaderDisplayName(),
+            message = if (other.isCityState) "We have encountered the City-State of [${other.nation.name}]!"
+                else other.nation.introduction,
+            acknowledgement = if (other.isCityState) "Excellent!" else "A pleasure to meet you.",
+        )
+    }
+
+    /** All text presented by the owned informational alert, available even out of turn.
+     *
+     * The alert records an event that has already happened. Its target must still be
+     * valid, but reading it never repeats the event or grants any game effects.
+     * This composes the desktop description formatters, which are not purity-annotated;
+     * tests verify that reading the content does not change serialized game state.
+     */
+    fun informationalPopupContent(alert: PopupAlert): InformationalPopupContent? = synchronized(civ.gameInfo) {
+        if (spectatorMode || civ.isSpectator() || civ.gameInfo.civilizations.none { it === civ } ||
+            civ.popupAlerts.none { it === alert }) return@synchronized null
+        when (alert.type) {
+            AlertType.FirstContact -> {
+                val introduction = firstContactIntroduction(alert) ?: return@synchronized null
+                InformationalPopupContent(
+                    title = introduction.leaderName,
+                    paragraphs = immutableParagraphs(introduction.message),
+                    acknowledgement = introduction.acknowledgement,
+                )
+            }
+            AlertType.StartIntro -> InformationalPopupContent(
+                title = civ.getLeaderDisplayName(),
+                paragraphs = immutableParagraphs(civ.nation.startIntroPart1, civ.nation.startIntroPart2),
+                acknowledgement = "Let's begin!",
+            )
+            AlertType.TechResearched -> {
+                val technology = civ.gameInfo.ruleset.technologies[alert.value] ?: return@synchronized null
+                InformationalPopupContent(
+                    title = technology.name,
+                    paragraphs = immutableParagraphs(technology.getDescription(civ)),
+                    quote = technology.quote,
+                    acknowledgement = Constants.close,
+                )
+            }
+            AlertType.WonderBuilt -> {
+                val wonder = civ.gameInfo.ruleset.buildings[alert.value] ?: return@synchronized null
+                if (!wonder.isWonder) return@synchronized null
+                InformationalPopupContent(
+                    title = wonder.name,
+                    paragraphs = immutableParagraphs(wonder.getShortDescription()),
+                    quote = wonder.quote.takeIf { it.isNotEmpty() },
+                    acknowledgement = Constants.close,
+                )
+            }
+            AlertType.GoldenAge -> InformationalPopupContent(
+                title = "GOLDEN AGE",
+                paragraphs = immutableParagraphs("Your citizens have been happy with your rule for so long that the empire enters a Golden Age!"),
+                acknowledgement = Constants.close,
+            )
+            else -> null
+        }
+    }
+
+    private fun immutableParagraphs(vararg text: String): List<String> =
+        Collections.unmodifiableList(text.toList())
+
     fun tryAcknowledgeAlert(alert: PopupAlert): Boolean = synchronized(civ.gameInfo) {
-        if (!canAct() || alert.type !in informationalAlerts || civ.popupAlerts.none { it === alert })
+        if (!canAct() || informationalPopupContent(alert) == null)
             return@synchronized false
         civ.popupAlerts.remove(alert)
         true
