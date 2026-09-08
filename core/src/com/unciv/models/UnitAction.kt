@@ -157,6 +157,8 @@ enum class UnitActionType(
         { ImageGetter.getUnitActionPortrait("Sleep") }),
     SleepUntilHealed("Sleep until healed",
         { ImageGetter.getUnitActionPortrait("Sleep") }),
+    Wake("Resume",
+        { ImageGetter.getUnitActionPortrait("Stop") }, false),
     Fortify("Fortify",
         { ImageGetter.getUnitActionPortrait("Fortify") }, UncivSound.Fortify),
     FortifyUntilHealed("Fortify until healed",

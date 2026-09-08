@@ -3,6 +3,8 @@ package com.unciv.ui.screens.worldscreen.unit.actions
 import com.unciv.GUI
 import com.unciv.UncivGame
 import com.unciv.logic.automation.unit.UnitAutomation
+import com.unciv.logic.civilization.PlayerUnitOrders
+import com.unciv.logic.civilization.PlayerUnitOrders.Order
 import com.unciv.logic.civilization.diplomacy.DiplomaticModifiers
 import com.unciv.logic.map.mapunit.MapUnit
 import com.unciv.logic.map.tile.Tile
@@ -150,6 +152,12 @@ object UnitActions {
 
         addSleepActions(unit, tile)
         addFortifyActions(unit)
+        if (unit.isFortified() || unit.isSleeping()) {
+            val orders = PlayerUnitOrders(unit.civ)
+            yield(UnitAction(UnitActionType.Wake, 35f,
+                action = { orders.tryOrder(unit, Order.WAKE); Unit }
+                    .takeIf { orders.canOrder(unit, Order.WAKE) }))
+        }
 
         addExplorationActions(unit)
 
@@ -253,7 +261,7 @@ object UnitActions {
             action = {
                 UncivGame.Current.pushScreen { PromotionPickerScreen(unit) }
                 Unit
-            }.takeIf { unit.hasMovement() && unit.attacksThisTurn == 0 }
+            }.takeIf { PlayerUnitOrders(unit.civ).canPromote(unit) }
         ))
     }
 
@@ -267,6 +275,7 @@ object UnitActions {
     }
 
     private suspend fun SequenceScope<UnitAction>.addFortifyActions(unit: MapUnit) {
+        val orders = PlayerUnitOrders(unit.civ)
         if (unit.isFortified()) {
             yield(UnitAction(
                 type = if (unit.isActionUntilHealed())
@@ -282,32 +291,34 @@ object UnitActions {
         if (!unit.canFortify() || !unit.hasMovement()) return
 
         yield(UnitAction(UnitActionType.Fortify,
-            action = { unit.fortify() }.takeIf { !unit.isFortified() || unit.isFortifyingUntilHealed() },
+            action = { orders.tryOrder(unit, Order.FORTIFY); Unit }
+                .takeIf { orders.canOrder(unit, Order.FORTIFY) },
             useFrequency = 30f
         ))
 
         if (unit.health == 100) return
         yield(UnitAction(UnitActionType.FortifyUntilHealed,
-            action = { unit.fortifyUntilHealed() }
-                .takeIf { !unit.isFortifyingUntilHealed() && unit.canHealInCurrentTile() },
+            action = { orders.tryOrder(unit, Order.FORTIFY_UNTIL_HEALED); Unit }
+                .takeIf { orders.canOrder(unit, Order.FORTIFY_UNTIL_HEALED) },
             useFrequency = 45f
         ))
     }
 
     private suspend fun SequenceScope<UnitAction>.addSleepActions(unit: MapUnit, tile: Tile) {
+        val orders = PlayerUnitOrders(unit.civ)
         if (unit.isFortified() || unit.canFortify() || unit.isGuarding() || !unit.hasMovement()) return
         if (tile.hasImprovementInProgress() && unit.canBuildImprovement(tile.getTileImprovementInProgress()!!)) return
 
         yield(UnitAction(UnitActionType.Sleep,
             useFrequency = if (!unit.isSleeping()) 29f else 21f,
-            action = { unit.action = UnitActionType.Sleep.value }.takeIf { !unit.isSleeping() || unit.isSleepingUntilHealed() }
+            action = { orders.tryOrder(unit, Order.SLEEP); Unit }.takeIf { orders.canOrder(unit, Order.SLEEP) }
         ))
 
         if (unit.health == 100) return
         yield(UnitAction(UnitActionType.SleepUntilHealed,
             useFrequency = if (!unit.isSleepingUntilHealed()) 44f else 20f,
-            action = { unit.action = UnitActionType.SleepUntilHealed.value }
-                .takeIf { !unit.isSleepingUntilHealed() && unit.canHealInCurrentTile() }
+            action = { orders.tryOrder(unit, Order.SLEEP_UNTIL_HEALED); Unit }
+                .takeIf { orders.canOrder(unit, Order.SLEEP_UNTIL_HEALED) }
         ))
     }
 
@@ -378,16 +389,18 @@ object UnitActions {
 
     // Skip one turn: marks a unit as due=false and doesn't cycle back in the queue
     private suspend fun SequenceScope<UnitAction>.addSkipAction(unit: MapUnit) {
+        val orders = PlayerUnitOrders(unit.civ)
+        val skipped = unit.due
+        val order = if (unit.due) Order.SKIP else Order.WAKE
         yield(UnitAction(
             type = UnitActionType.Skip,
             useFrequency = 0f, // Last on first page (defaultPage=0)
             action = {
-                unit.due = !unit.due
                 // If it's on, skips to next unit due to worldScreen.switchToNextUnit() in activateAction
                 // We don't want to switch twice since then we skip units :)
-                if (!unit.due && !UncivGame.Current.settings.autoUnitCycle)
+                if (orders.trySetSkipped(unit, skipped) && !unit.due && !UncivGame.Current.settings.autoUnitCycle)
                     GUI.getWorldScreen().switchToNextUnit()
-            }.takeIf { unit.hasMovement() },
+            }.takeIf { orders.canOrder(unit, order) },
             isCurrentAction = !unit.due
         ))
     }

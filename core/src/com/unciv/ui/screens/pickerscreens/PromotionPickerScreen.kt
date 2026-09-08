@@ -8,6 +8,7 @@ import com.badlogic.gdx.scenes.scene2d.ui.Image
 import com.badlogic.gdx.scenes.scene2d.ui.Label
 import com.badlogic.gdx.scenes.scene2d.ui.Table
 import com.unciv.GUI
+import com.unciv.logic.civilization.PlayerUnitOrders
 import com.unciv.logic.map.mapunit.MapUnit
 import com.unciv.models.TutorialTrigger
 import com.unciv.models.UncivSound
@@ -54,9 +55,8 @@ class PromotionPickerScreen private constructor(
 
     // [acceptPromotion] will [recreate] the screen, so these are constant for this picker's lifetime
     private val canChangeState = GUI.isAllowedChangeState()
-    private val canPromoteNow = canChangeState &&
-            unit.promotions.canBePromoted() &&
-            unit.hasMovement() && unit.attacksThisTurn == 0
+    private val promotionOperations = PlayerUnitOrders(unit.civ)
+    private val canPromoteNow = canChangeState && promotionOperations.canPromote(unit)
 
     // Logic
     private val tree = PromotionTree(unit)
@@ -116,10 +116,14 @@ class PromotionPickerScreen private constructor(
         if (button == null || !button.isPickable) return
 
         val path = tree.getPathTo(button.node.promotion)
-        SoundPlayer.playRepeated(UncivSound.Promote, path.size.coerceAtMost(2))
-
-        for (promotion in path)
-            unit.promotions.addPromotion(promotion.name)
+        var applied = 0
+        // Recheck each step: promotion effects can change which later choices are legal.
+        for (promotion in path) {
+            if (!promotionOperations.tryPromote(unit, promotion.name)) break
+            applied++
+        }
+        if (applied == 0) return
+        SoundPlayer.playRepeated(UncivSound.Promote, applied.coerceAtMost(2))
 
         onChange?.invoke()
 
