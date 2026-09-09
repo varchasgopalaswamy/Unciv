@@ -1,5 +1,6 @@
 package com.unciv.ui.screens.worldscreen.unit.actions
 
+import com.unciv.logic.civilization.PlayerUnitEconomyOperations
 import com.unciv.logic.map.mapunit.MapUnit
 import com.unciv.models.Counter
 import com.unciv.models.UnitAction
@@ -59,6 +60,14 @@ object UnitActionsUpgrade {
                 "Upgrade to [${upgradedUnit.name}] ([$goldCostOfUpgrade] gold)"
             else "Upgrade to [${upgradedUnit.name}]\n([$goldCostOfUpgrade] gold, [$newResourceRequirementsString])"
             val useFrequency = getUseFrequency(unit, upgradesTo.second, 120f)
+            // Ordinary land upgrades revalidate the current player, price and placement
+            // when invoked. Free, special and domain-changing effects retain their rules.
+            val operations = PlayerUnitEconomyOperations(civInfo)
+            val ordinaryPlayerUpgrade = !isFree && !isSpecial && !isAnywhere && civInfo.isHuman() &&
+                unit.baseUnit.isLandUnit && upgradedUnit.isLandUnit
+            val option = if (ordinaryPlayerUpgrade)
+                operations.upgrades(unit).singleOrNull { it.targetName == upgradedUnit.name }
+            else null
 
             yield(UpgradeUnitAction(
                 title = title,
@@ -66,9 +75,12 @@ object UnitActionsUpgrade {
                 goldCostOfUpgrade = goldCostOfUpgrade,
                 newResourceRequirements = resourceRequirementsDelta,
                 action = {
-                    unit.upgrade.performUpgrade(upgradedUnit, isFree, goldCostOfUpgrade)
+                    if (ordinaryPlayerUpgrade) operations.tryUpgrade(unit, upgradedUnit.name)
+                    else unit.upgrade.performUpgrade(upgradedUnit, isFree, goldCostOfUpgrade)
+                    Unit
                 }.takeIf {
-                    isFree || (
+                    if (ordinaryPlayerUpgrade) option?.available == true
+                    else isFree || (
                         unit.civ.gold >= goldCostOfUpgrade
                             && unit.hasMovement()
                             && unitTile.getOwner() == civInfo

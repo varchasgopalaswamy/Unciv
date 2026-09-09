@@ -3,6 +3,7 @@ package com.unciv.ui.screens.worldscreen.unit.actions
 import com.unciv.GUI
 import com.unciv.UncivGame
 import com.unciv.logic.automation.unit.UnitAutomation
+import com.unciv.logic.civilization.PlayerUnitEconomyOperations
 import com.unciv.logic.civilization.PlayerUnitOrders
 import com.unciv.logic.civilization.PlayerUnitOrders.Order
 import com.unciv.logic.civilization.diplomacy.DiplomaticModifiers
@@ -233,23 +234,27 @@ object UnitActions {
     }
 
     private suspend fun SequenceScope<UnitAction>.addDisbandAction(unit: MapUnit) {
+        val operations = PlayerUnitEconomyOperations(unit.civ)
+        val ordinaryPlayerUnit = unit.civ.isHuman() && unit.baseUnit.isLandUnit
+        val available = if (ordinaryPlayerUnit) operations.disband(unit)?.available == true else unit.hasMovement()
         yield(UnitAction(type = UnitActionType.DisbandUnit,
             useFrequency = 0f, // Only can happen once per unit
             action = {
                 val worldScreen = GUI.getWorldScreen()
                 if (!worldScreen.hasOpenPopups()) {
-                    val disbandText = if (unit.currentTile.getOwner() == unit.civ)
-                        "Disband this unit for [${unit.baseUnit.getDisbandGold(unit.civ)}] gold?".tr()
-                    else "Do you really want to disband this unit?".tr()
+                    val disbandText = PlayerUnitEconomyOperations.disbandConfirmation(unit).tr()
                     ConfirmPopup(worldScreen, disbandText, "Disband unit") {
-                        unit.disband()
-                        unit.civ.updateStatsForNextTurn() // less upkeep!
+                        if (ordinaryPlayerUnit) operations.tryDisband(unit)
+                        else {
+                            unit.disband()
+                            unit.civ.updateStatsForNextTurn() // less upkeep!
+                        }
                         GUI.setUpdateWorldOnNextRender()
                         if (GUI.getSettings().autoUnitCycle)
                             worldScreen.switchToNextUnit()
                     }.open()
                 }
-            }.takeIf { unit.hasMovement() }
+            }.takeIf { available }
         ))
     }
 
