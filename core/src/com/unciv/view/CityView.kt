@@ -5,6 +5,7 @@ import com.unciv.logic.city.City
 import com.unciv.logic.city.CityFlags
 import com.unciv.logic.civilization.Civilization
 import com.unciv.logic.civilization.PlayerCityOperations
+import com.unciv.logic.civilization.PlayerPurchaseOperations
 import com.unciv.logic.city.StatTreeNode
 import com.unciv.logic.city.CityFocus
 import com.unciv.logic.city.CityResources
@@ -158,11 +159,9 @@ class CityView(city: City,
         if (!canChangeState()) return false
         return PlayerCityOperations(viewer, spectatorMode).trySetTileLocked(city, getTile(tileView), false)
     }
-    fun tryBuyTile(tileView: TileView): Boolean {
+    fun tryBuyTile(tileView: TileView, expectedGoldCost: Int? = null): Boolean {
         if (!canChangeState()) return false
-        if (!city.expansion.canBuyTile(getTile(tileView))) return false
-        city.expansion.buyTile(getTile(tileView))
-        return true
+        return PlayerPurchaseOperations(viewer, spectatorMode).tryBuyTile(city, getTile(tileView), expectedGoldCost)
     }
     fun tryWorkTile(tileView: TileView): Boolean {
         if (!canChangeState()) return false

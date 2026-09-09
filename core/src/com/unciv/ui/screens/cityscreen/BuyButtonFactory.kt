@@ -145,7 +145,7 @@ class BuyButtonFactory(val cityScreen: CityScreen) {
             addCloseButton(Constants.cancel, KeyboardBinding.Cancel) { cityScreen.updateAsync() }
             val confirmStyle = BaseScreen.skin.get("positive", TextButton.TextButtonStyle::class.java)
             addOKButton("Purchase", KeyboardBinding.Confirm, confirmStyle) {
-                purchaseConstruction(construction, stat, tile)
+                purchaseConstruction(construction, stat, tile, constructionStatBuyCost.takeIf { stat == Stat.Gold })
             }
             equalizeLastTwoButtonWidths()
             open(true)
@@ -163,14 +163,15 @@ class BuyButtonFactory(val cityScreen: CityScreen) {
     private fun purchaseConstruction(
         construction: INonPerpetualConstruction,
         stat: Stat = Stat.Gold,
-        tile: TileView? = null
+        tile: TileView? = null,
+        expectedGoldCost: Int? = null
     ) {
         SoundPlayer.play(stat.purchaseSound)
         val cityView = cityScreen.cityView
 
         val inputProcessor = InputDisabling.disableInput()
         Concurrency.run {
-            val purchased = cityView.constructions.purchaseConstruction(construction, cityScreen.selectedQueueEntry, stat, tile)
+            val purchased = cityView.constructions.purchaseConstruction(construction, cityScreen.selectedQueueEntry, stat, tile, expectedGoldCost)
             Concurrency.runOnGLThread {
                 InputDisabling.setInputProcessor(inputProcessor)
                 if (!purchased) {

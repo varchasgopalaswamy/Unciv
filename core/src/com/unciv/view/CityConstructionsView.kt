@@ -2,6 +2,8 @@ package com.unciv.view
 
 import com.unciv.logic.city.CityConstructions
 import com.unciv.logic.civilization.Civilization
+import com.unciv.logic.civilization.PlayerPurchaseOperations
+import com.unciv.models.ruleset.Building
 import com.unciv.models.ruleset.IConstruction
 import com.unciv.models.ruleset.INonPerpetualConstruction
 import com.unciv.models.ruleset.RejectionReason
@@ -41,11 +43,15 @@ class CityConstructionsView(private val cityConstructions: CityConstructions, ga
     @Readonly fun getStatBuyCost(construction: INonPerpetualConstruction, stat: Stat): Int? =
         construction.getStatBuyCost(cityConstructions.city, stat)
     @Readonly fun isConstructionPurchaseAllowed(construction: INonPerpetualConstruction, stat: Stat, cost: Int): Boolean =
-        cityConstructions.isConstructionPurchaseAllowed(construction, stat, cost)
+        if (stat == Stat.Gold && !(construction is Building && construction.hasCreateOneImprovementUnique()))
+            PlayerPurchaseOperations(viewer, spectatorMode).canBuyConstruction(cityConstructions.city, construction.name, cost)
+        else cityConstructions.isConstructionPurchaseAllowed(construction, stat, cost)
     @Readonly fun isConstructionPurchaseBlockedByUnit(construction: INonPerpetualConstruction): Boolean =
         cityConstructions.isConstructionPurchaseBlockedByUnit(construction)
 
     // Actions
-    fun purchaseConstruction(construction: INonPerpetualConstruction, queuePosition: Int, stat: Stat, tileView: TileView?): Boolean =
-        cityConstructions.purchaseConstruction(construction, queuePosition, automatic = false, stat, tileView?.unwrap())
+    fun purchaseConstruction(construction: INonPerpetualConstruction, queuePosition: Int, stat: Stat, tileView: TileView?, expectedGoldCost: Int? = null): Boolean =
+        if (stat == Stat.Gold && !(construction is Building && construction.hasCreateOneImprovementUnique()))
+            PlayerPurchaseOperations(viewer, spectatorMode).tryBuyConstruction(cityConstructions.city, construction.name, expectedGoldCost, queuePosition)
+        else cityConstructions.purchaseConstruction(construction, queuePosition, automatic = false, stat, tileView?.unwrap())
 }

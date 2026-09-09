@@ -443,7 +443,7 @@ class CityScreen(
             restoreDefault = { updateAsync() }
         ) {
             Concurrency.run {
-                val success = cityView.tryBuyTile(selectedTile)
+                val success = cityView.tryBuyTile(selectedTile, goldCostOfTile)
                 if (!success){
                     updateAsync()
                     return@run
