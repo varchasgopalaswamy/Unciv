@@ -182,7 +182,10 @@ object UnitActionsFromUniques {
     }
 
     internal fun getTriggerUniqueActions(unit: MapUnit, tile: Tile) = sequence {
+        val sharedGoldenAge = unit.civ.isHuman() && unit.isGreatPerson()
+        if (sharedGoldenAge) yieldAll(UnitActionsGreatPerson.sharedActions(unit, tile, UnitActionType.TriggerUnique))
         for (unique in unit.getUniques()) {
+            if (sharedGoldenAge && unique.type == UniqueType.OneTimeEnterGoldenAgeTurns && unique.hasModifier(UniqueType.UnitActionConsumeUnit)) continue
             // not a unit action
             if (unique.modifiers.none { it.type?.targetTypes?.contains(UniqueTarget.UnitActionModifier) == true }) continue
             // has a dedicated action handler (e.g. ConstructImprovementInstantly → CreateImprovement)
@@ -287,6 +290,10 @@ object UnitActionsFromUniques {
 
     // Not internal: Used in SpecificUnitAutomation
     fun getImprovementConstructionActionsFromGeneralUnique(unit: MapUnit, tile: Tile) = sequence {
+        if (unit.civ.isHuman() && unit.isGreatPerson()) {
+            yieldAll(UnitActionsGreatPerson.sharedActions(unit, tile, UnitActionType.CreateImprovement))
+            return@sequence
+        }
         val uniquesToCheck = UnitActionModifiers.getUsableUnitActionUniques(unit, UniqueType.ConstructImprovementInstantly)
 
         val civResources = unit.civ.getCivResourcesByName()

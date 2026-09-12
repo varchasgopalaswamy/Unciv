@@ -2,6 +2,7 @@ package com.unciv.ui.screens.worldscreen.unit.actions
 
 import com.unciv.logic.civilization.NotificationCategory
 import com.unciv.logic.civilization.NotificationIcon
+import com.unciv.logic.civilization.PlayerGreatPersonOperations
 import com.unciv.logic.map.mapunit.MapUnit
 import com.unciv.logic.map.tile.Tile
 import com.unciv.models.UnitAction
@@ -16,7 +17,29 @@ import kotlin.math.min
 @Suppress("UNUSED_PARAMETER") // references need to have the signature expected by UnitActions.actionTypeToFunctions
 object UnitActionsGreatPerson {
 
+    /** Human Great Person buttons and other callers share execution-time validation. */
+    internal fun sharedActions(unit: MapUnit, tile: Tile, kind: UnitActionType): Sequence<UnitAction> {
+        if (tile !== unit.currentTile) return emptySequence()
+        val operations = PlayerGreatPersonOperations(unit.civ)
+        return operations.options(unit).asSequence().filter { it.kind == kind }.map { option ->
+            val priority = when (kind) {
+                UnitActionType.HurryResearch, UnitActionType.HurryPolicy -> 76f
+                UnitActionType.ConductTradeMission -> 70f
+                UnitActionType.TriggerUnique -> 80f
+                UnitActionType.CreateImprovement -> 85f
+                else -> 75f
+            }
+            UnitAction(kind, getUseFrequency(unit, option.unique, priority), title = option.title,
+                associatedUnique = option.unique,
+                action = { if (tile === unit.currentTile) operations.tryActivate(unit, option.name); Unit }.takeIf { option.available })
+        }
+    }
+
     internal fun getHurryResearchActions(unit: MapUnit, tile: Tile) = sequence {
+        if (unit.civ.isHuman() && unit.isGreatPerson()) {
+            yieldAll(sharedActions(unit, tile, UnitActionType.HurryResearch))
+            return@sequence
+        }
         for (unique in unit.getMatchingUniques(UniqueType.CanHurryResearch)){
             val useFrequency = getUseFrequency(unit, unique, 76f)
             yield(UnitAction(
@@ -34,6 +57,10 @@ object UnitActionsGreatPerson {
     }
 
     internal fun getHurryPolicyActions(unit: MapUnit, tile: Tile) = sequence {
+        if (unit.civ.isHuman() && unit.isGreatPerson()) {
+            yieldAll(sharedActions(unit, tile, UnitActionType.HurryPolicy))
+            return@sequence
+        }
         for (unique in unit.getMatchingUniques(UniqueType.CanHurryPolicy)){
             val useFrequency = getUseFrequency(unit, unique, 76f)
             yield(UnitAction(
@@ -47,6 +74,10 @@ object UnitActionsGreatPerson {
     }
 
     internal fun getHurryWonderActions(unit: MapUnit, tile: Tile) = sequence {
+        if (unit.civ.isHuman() && unit.isGreatPerson()) {
+            yieldAll(sharedActions(unit, tile, UnitActionType.HurryWonder))
+            return@sequence
+        }
         for (unique in unit.getMatchingUniques(UniqueType.CanSpeedupWonderConstruction)) {
             val canHurryWonder =
                 if (!tile.isCityCenter()) false
@@ -70,6 +101,10 @@ object UnitActionsGreatPerson {
     }
 
     internal fun getHurryBuildingActions(unit: MapUnit, tile: Tile) = sequence {
+        if (unit.civ.isHuman() && unit.isGreatPerson()) {
+            yieldAll(sharedActions(unit, tile, UnitActionType.HurryBuilding))
+            return@sequence
+        }
         for (unique in unit.getMatchingUniques(UniqueType.CanSpeedupConstruction)) {
             val useFrequency = getUseFrequency(unit, unique, 75f)
             if (!tile.isCityCenter()) {
@@ -104,6 +139,10 @@ object UnitActionsGreatPerson {
     }
 
     internal fun getConductTradeMissionActions(unit: MapUnit, tile: Tile) = sequence {
+        if (unit.civ.isHuman() && unit.isGreatPerson()) {
+            yieldAll(sharedActions(unit, tile, UnitActionType.ConductTradeMission))
+            return@sequence
+        }
         val canConductTradeMission = tile.owningCity?.civ?.isCityState == true
             && tile.owningCity?.civ != unit.civ
             && tile.owningCity?.civ?.isAtWarWith(unit.civ) == false
