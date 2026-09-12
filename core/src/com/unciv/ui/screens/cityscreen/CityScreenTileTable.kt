@@ -83,6 +83,16 @@ class CityScreenTileTable(private val cityScreen: CityScreen) : Table() {
         if (workingCity != null)
             innerTable.add("Worked by [${workingCity.name}]".toLabel()).row()
 
+        if (workingCity != null && workingCity != cityView && workingCity.isSameCivAs(cityView)) {
+            val reassignButton = "Work in [${cityView.name}]".toTextButton()
+            reassignButton.onClick {
+                cityView.tryReassignTile(tileView)
+                cityScreen.updateAsync()
+            }
+            reassignButton.isEnabled = cityScreen.canChangeState && cityView.canReassignTile(tileView)
+            innerTable.add(reassignButton).padTop(5f).row()
+        }
+
         if (cityView.isWorked(tileView)) {
             if (tileView.isLocked()) {
                 val unlockButton = "Unlock".toTextButton()

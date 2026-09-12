@@ -120,50 +120,42 @@ class ConstructionInfoTable(val cityScreen: CityScreen) : Table() {
         construction: IConstruction
     ) {
         if (construction is Building && construction.isSellable()) {
+            val sale = cityView.buildingSales().firstOrNull { it.name == construction.name } ?: return
             selectedConstructionTable.run {
-                val sellAmount = cityView.getGoldForSellingBuilding(construction.name)
+                val sellAmount = sale.gold
                 val sellText = "{Sell} $sellAmount " + Fonts.gold
                 val sellBuildingButton = sellText.toTextButton()
                 row()
                 add(sellBuildingButton).padTop(5f).colspan(2).center()
 
-                val isFree = cityScreen.hasFreeBuilding(construction)
-                val enableSell = !isFree &&
-                    !cityView.isPuppet() &&
-                    cityScreen.canChangeState &&
-                    (!cityView.hasSoldBuildingThisTurn() || cityView.isGodModeEnabled())
+                val enableSell = sale.action.available && cityScreen.canChangeState
                 sellBuildingButton.isEnabled = enableSell
                 if (enableSell)
                     sellBuildingButton.onClick(UncivSound.Coin) {
                         sellBuildingButton.disable()
-                        sellBuildingClicked(construction, sellText)
+                        sellBuildingClicked(construction, sellText, sale.gold, sale.confirmation)
                     }
-
-                if (cityView.hasSoldBuildingThisTurn() && !cityView.isGodModeEnabled()
-                        || cityView.isPuppet()
-                        || !cityScreen.canChangeState)
-                    sellBuildingButton.disable()
             }
         }
     }
 
-    private fun sellBuildingClicked(construction: Building, sellText: String) {
+    private fun sellBuildingClicked(construction: Building, sellText: String, expectedGold: Int, confirmation: String) {
         cityScreen.closeAllPopups()
 
         ConfirmPopup(
             cityScreen,
-            "Are you sure you want to sell this [${construction.name}]?",
+            confirmation,
             sellText,
             restoreDefault = {
                 cityScreen.updateAsync()
             }
         ) {
-            sellBuildingConfirmed(construction)
+            sellBuildingConfirmed(construction, expectedGold)
         }.open()
     }
 
-    private fun sellBuildingConfirmed(construction: Building) {
-        cityView.trySellBuilding(construction)
+    private fun sellBuildingConfirmed(construction: Building, expectedGold: Int) {
+        cityView.trySellBuilding(construction, expectedGold)
         cityScreen.clearSelection()
         cityScreen.updateAsync()
     }

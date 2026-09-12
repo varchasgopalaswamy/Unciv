@@ -5,6 +5,7 @@ import com.unciv.logic.city.City
 import com.unciv.logic.city.CityFlags
 import com.unciv.logic.civilization.Civilization
 import com.unciv.logic.civilization.PlayerCityOperations
+import com.unciv.logic.civilization.PlayerCityManagementOperations
 import com.unciv.logic.civilization.PlayerPurchaseOperations
 import com.unciv.logic.city.StatTreeNode
 import com.unciv.logic.city.CityFocus
@@ -218,10 +219,11 @@ class CityView(city: City,
         city.unitShouldUseSavedPromotion[baseUnit] = value
         return true
     }
-    fun trySellBuilding(construction: Building): Boolean {
+    fun buildingSales() = PlayerCityManagementOperations(viewer, spectatorMode).sales(city)
+
+    fun trySellBuilding(construction: Building, expectedGold: Int? = null): Boolean {
         if (!canChangeState()) return false
-        city.sellBuilding(construction)
-        return true
+        return PlayerCityManagementOperations(viewer, spectatorMode).trySellBuilding(city, construction.name, expectedGold)
     }
     fun tryMoveEntryToTop(index: Int) {
         if (!canChangeState()) return
@@ -249,45 +251,39 @@ class CityView(city: City,
     }
     fun tryReassignPopulation(resetLocked: Boolean = false): Boolean {
         if (!canChangeState()) return false
-        city.reassignPopulation(resetLocked)
-        return true
+        return PlayerCityManagementOperations(viewer, spectatorMode).tryReassignPopulation(city, resetLocked)
     }
     fun tryToggleAvoidGrowth(): Boolean {
         if (!canChangeState()) return false
-        city.avoidGrowth = !city.avoidGrowth
-        city.reassignPopulation()
-        return true
+        return PlayerCityManagementOperations(viewer, spectatorMode).trySetAvoidGrowth(city, !city.avoidGrowth)
     }
     fun tryEnableManualSpecialists(): Boolean {
         if (!canChangeState()) return false
-        city.manualSpecialists = true
-        return true
+        return PlayerCityManagementOperations(viewer, spectatorMode).trySetManualSpecialists(city, true)
     }
     fun tryDisableManualSpecialists(): Boolean {
         if (!canChangeState()) return false
-        city.manualSpecialists = false
-        city.reassignPopulation()
-        return true
+        return PlayerCityManagementOperations(viewer, spectatorMode).trySetManualSpecialists(city, false)
     }
     fun tryAssignSpecialist(specialistName: String): Boolean {
         if (!canChangeState()) return false
-        city.population.specialistAllocations.add(specialistName, 1)
-        city.manualSpecialists = true
-        city.cityStats.update()
-        return true
+        return PlayerCityManagementOperations(viewer, spectatorMode).trySetSpecialist(city, specialistName, true)
     }
     fun tryUnassignSpecialist(specialistName: String): Boolean {
         if (!canChangeState()) return false
-        city.population.specialistAllocations.add(specialistName, -1)
-        city.manualSpecialists = true
-        city.cityStats.update()
-        return true
+        return PlayerCityManagementOperations(viewer, spectatorMode).trySetSpecialist(city, specialistName, false)
     }
     fun trySetCityFocus(focus: CityFocus): Boolean {
         if (!canChangeState()) return false
-        city.setCityFocus(focus)
-        city.reassignPopulation()
-        return true
+        return PlayerCityManagementOperations(viewer, spectatorMode).trySetFocus(city, focus)
+    }
+
+    @Readonly fun canReassignTile(tile: TileView): Boolean =
+        PlayerCityManagementOperations(viewer, spectatorMode).reassignTile(city, getTile(tile)).available
+
+    fun tryReassignTile(tile: TileView): Boolean {
+        if (!canChangeState()) return false
+        return PlayerCityManagementOperations(viewer, spectatorMode).tryReassignTile(city, getTile(tile))
     }
 
 }
