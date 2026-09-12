@@ -22,7 +22,7 @@ class GreatPersonManager : IsPartOfGameInfoSerialization {
     lateinit var civInfo: Civilization
 
     /** Base points, without speed modifier */
-    var pointsForNextGreatPersonCounter = Counter<String>()  // Initial values assigned in getPointsRequiredForGreatPerson as needed
+    var pointsForNextGreatPersonCounter = Counter<String>()  // Missing pools use 100 until the first person is generated
     var pointsForNextGreatGeneral = 200
     var pointsForNextGreatGeneralCounter = Counter<String>() // Initial values assigned when needed
 
@@ -55,13 +55,11 @@ class GreatPersonManager : IsPartOfGameInfoSerialization {
         // An empty string is used to indicate the Unique wasn't found
         .firstOrNull()?.params?.get(0) ?: ""
     
-    @Readonly @Suppress("purity") 
+    @Readonly
     fun getPointsRequiredForGreatPerson(greatPerson: String): Int {
         val key = getPoolKey(greatPerson)
-        if (pointsForNextGreatPersonCounter[key] == 0) {
-            pointsForNextGreatPersonCounter[key] = 100
-        }
-        return (pointsForNextGreatPersonCounter[key] * civInfo.gameInfo.speed.modifier).toInt()
+        val base = pointsForNextGreatPersonCounter[key].takeUnless { it == 0 } ?: 100
+        return (base * civInfo.gameInfo.speed.modifier).toInt()
     }
 
     fun getNewGreatPerson(): String? {
@@ -81,7 +79,8 @@ class GreatPersonManager : IsPartOfGameInfoSerialization {
             val requiredPoints = getPointsRequiredForGreatPerson(greatPerson)
             if (value >= requiredPoints) {
                 greatPersonPointsCounter.add(greatPerson, -requiredPoints)
-                pointsForNextGreatPersonCounter[getPoolKey(greatPerson)] *= 2
+                val key = getPoolKey(greatPerson)
+                pointsForNextGreatPersonCounter[key] = (pointsForNextGreatPersonCounter[key].takeUnless { it == 0 } ?: 100) * 2
                 return greatPerson
             }
         }
