@@ -213,6 +213,21 @@ class PlayerCityManagementOperationsTest {
     }
 
     @Test
+    fun `manual specialist toggle requires the same visible panel as the city screen`() {
+        city.cityConstructions.removeBuilding("University")
+        assertTrue(city.population.getMaxSpecialists().isEmpty())
+        val before = json().toJson(testGame.gameInfo)
+        assertFalse(operations.specialistControl(city).available)
+        assertTrue(operations.specialistControl(city).unavailableReasons.isNotEmpty())
+        assertFalse(operations.trySetManualSpecialists(city, false))
+        assertFalse(GameView(testGame.gameInfo, player).getCityView(city).tryDisableManualSpecialists())
+        assertEquals(before, json().toJson(testGame.gameInfo))
+        city.cityConstructions.addBuilding("University")
+        assertTrue(operations.specialistControl(city).available)
+        assertTrue(operations.trySetManualSpecialists(city, false))
+    }
+
+    @Test
     fun `queries leave the saved game unchanged and return detached choices`() {
         val before = json().toJson(testGame.gameInfo)
         val specialists = operations.specialists(city)

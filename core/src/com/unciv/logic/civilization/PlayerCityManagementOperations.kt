@@ -57,11 +57,20 @@ class PlayerCityManagementOperations(private val civ: Civilization, private val 
     }
 
     fun trySetManualSpecialists(city: City, enabled: Boolean): Boolean = synchronized(civ.gameInfo) {
-        if (!control(city).available) return@synchronized false
+        if (!specialistControl(city).available) return@synchronized false
         city.manualSpecialists = enabled
         if (!enabled) city.reassignPopulation()
         civ.updateStatsForNextTurn()
         true
+    }
+
+    /** The city screen only displays its specialist controls when slots exist. */
+    @Readonly
+    fun specialistControl(city: City): Action {
+        @LocalState val result = reasons(city).toMutableList()
+        if (owns(city) && city.population.getMaxSpecialists().isEmpty())
+            result.add("This city has no specialist slots")
+        return action(result)
     }
 
     /** Reset Citizens clears tile locks; other callers may request ordinary reassignment. */
