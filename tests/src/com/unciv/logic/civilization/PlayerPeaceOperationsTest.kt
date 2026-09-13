@@ -34,6 +34,25 @@ class PlayerPeaceOperationsTest {
         game.gameInfo.currentPlayerCiv = civ
     }
 
+    @Test
+    fun `peace eligibility can be inspected off turn without authorizing a request`() {
+        assertNotNull(operations.negotiationStateReason(greece))
+        war(expireCooldown = false)
+        activate(greece)
+        assertTrue(operations.negotiationStateReason(greece)!!.contains("more turns"))
+        greece.getDiplomacyManager(rome)!!.removeFlag(DiplomacyFlags.DeclaredWar)
+        assertNull(operations.negotiationStateReason(greece))
+        assertNotNull(operations.negotiationUnavailableReason(greece))
+        assertNotNull(operations.availableTerms(greece))
+        assertFalse(operations.tryPropose(greece, listOf(peace()), listOf(peace())))
+        assertTrue(greece.tradeRequests.isEmpty())
+        assertSame(greece, game.gameInfo.currentPlayerCiv)
+        assertNotNull(PlayerPeaceOperations(rome, spectatorMode = true).negotiationStateReason(greece))
+        activate(rome)
+        assertNull(operations.negotiationUnavailableReason(greece))
+        assertTrue(operations.tryPropose(greece, listOf(peace()), listOf(peace())))
+    }
+
     private fun war(expireCooldown: Boolean = true) {
         rome.diplomacyFunctions.makeCivilizationsMeet(greece)
         rome.getDiplomacyManager(greece)!!.declareWar()

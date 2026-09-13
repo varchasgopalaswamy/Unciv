@@ -40,15 +40,20 @@ class PlayerPeaceOperations(private val civ: Civilization, private val spectator
         return civ.gameInfo.civilizations.firstOrNull { it.civID == request.requestingCiv && knownPartner(it) }
     }
 
-    private fun negotiationStateReason(other: Civilization): String? = when {
-        !knownPartner(other) -> "A known major civilization is required."
-        civ.isDefeated() || other.isDefeated() -> "A civilization has been defeated."
-        civ.gameInfo.ruleset.modOptions.hasUnique(UniqueType.DiplomaticRelationshipsCannotChange) ->
-            "Diplomatic relationships cannot change in this game."
-        !civ.isAtWarWith(other) -> "These civilizations are already at peace."
-        other.getDiplomacyManager(civ)!!.hasFlag(DiplomacyFlags.DeclaredWar) ->
-            "Peace negotiations are unavailable for [${other.getDiplomacyManager(civ)!!.getFlag(DiplomacyFlags.DeclaredWar)}] more turns."
-        else -> null
+    /** Read-only eligibility independent of whose turn it is. This does not authorize a mutation:
+     * [tryPropose] and the other request operations still require the active human player.
+     */
+    fun negotiationStateReason(other: Civilization): String? = synchronized(civ.gameInfo) {
+        when {
+            !knownPartner(other) -> "A known major civilization is required."
+            civ.isDefeated() || other.isDefeated() -> "A civilization has been defeated."
+            civ.gameInfo.ruleset.modOptions.hasUnique(UniqueType.DiplomaticRelationshipsCannotChange) ->
+                "Diplomatic relationships cannot change in this game."
+            !civ.isAtWarWith(other) -> "These civilizations are already at peace."
+            other.getDiplomacyManager(civ)!!.hasFlag(DiplomacyFlags.DeclaredWar) ->
+                "Peace negotiations are unavailable for [${other.getDiplomacyManager(civ)!!.getFlag(DiplomacyFlags.DeclaredWar)}] more turns."
+            else -> null
+        }
     }
 
     fun negotiationUnavailableReason(other: Civilization): String? = synchronized(civ.gameInfo) {
