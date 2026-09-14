@@ -13,6 +13,7 @@ import com.unciv.logic.civilization.PlayerCaptureOperations
 import com.unciv.logic.civilization.NotificationCategory
 import com.unciv.logic.civilization.NotificationIcon
 import com.unciv.logic.civilization.PlayerOperations
+import com.unciv.logic.civilization.PlayerFriendshipOperations
 import com.unciv.logic.civilization.PopupAlert
 import com.unciv.logic.civilization.diplomacy.*
 import com.unciv.logic.map.mapunit.MapUnit
@@ -225,31 +226,26 @@ class AlertPopup(
     }
 
     private fun addCityTraded() {
-        val city = getCity(popupAlert.value)
-        addQuestionAboutTheCity(city.name)
-        val conqueringCiv = gameInfo.getCurrentPlayerCivilization()
-
-        if (!conqueringCiv.isAtWarWith(city.foundingCivObject!!)) {
-            addLiberateOption(city, conqueringCiv)
-            addSeparator()
-        }
-        addCloseButton("Keep it").row()
+        addCityConquered()
     }
 
     private fun addDeclarationOfFriendship(): Boolean {
+        val operations = PlayerFriendshipOperations(viewingCiv)
+        val decision = operations.decision(popupAlert) ?: return false
         val otherciv = getCiv(popupAlert.value)
-        if (otherciv.isDefeated() || otherciv.getDiplomacyManager(viewingCiv)!!.diplomaticStatus == DiplomaticStatus.War) return false
-        val playerDiploManager = viewingCiv.getDiplomacyManager(otherciv)!!
         addLeaderName(otherciv)
         addTopicHeader("DECLARATION OF FRIENDSHIP", LIGHTER_GREEN_COLOR)
-        addGoodSizedLabel(
-                if (otherciv.nation.declaringFriendship.isNotEmpty()) otherciv.nation.declaringFriendship else "My friend, shall we declare our friendship to the world?"
-        ).row()
-        addCloseButton("Declare Friendship ([30] turns)", KeyboardBinding.Confirm) {
-            playerDiploManager.signDeclarationOfFriendship()
-        }.row()
-        addCloseButton("We are not interested.", KeyboardBinding.Cancel) {
-            playerDiploManager.otherCivDiplomacy().setFlag(DiplomacyFlags.DeclinedDeclarationOfFriendship, 20)
+        addGoodSizedLabel(decision.content.paragraphs.last()).row()
+        val accept = addButton(decision.content.acknowledgement, KeyboardBinding.Confirm) {
+            if (operations.tryRespond(popupAlert, true)) close()
+        }
+        if (decision.unavailableReason != null) {
+            accept.actor.disable()
+            addGoodSizedLabel(decision.unavailableReason).row()
+        }
+        accept.row()
+        addButton(decision.content.additionalAcknowledgements.single(), KeyboardBinding.Cancel) {
+            if (operations.tryRespond(popupAlert, false)) close()
         }.row()
         val music = UncivGame.Current.musicController
         music.playVoice("${otherciv.nation.name}.declaringFriendship")
@@ -510,11 +506,6 @@ class AlertPopup(
         addSeparator().padBottom(SEPARATOR_LINE_TO_TEXT_PADDING)
     }
 
-    private fun addQuestionAboutTheCity(cityName: String) {
-        addGoodSizedLabel("What would you like to do with the city of [$cityName]?",
-            Constants.headingFontSize, hideIcons = true).padBottom(20f).row()
-    }
-
     private fun addDestroyOption(destroyAction: () -> Unit) {
         val button = "Destroy".toTextButton()
         button.onActivation {
@@ -560,17 +551,6 @@ class AlertPopup(
         addGoodSizedLabel("You have no control over the the production of puppeted cities.").row()
         addGoodSizedLabel("Puppeted cities also generate 25% less Science and Culture.").row()
         if (mayAnnex) addGoodSizedLabel("A puppeted city can be annexed at any time.").row()
-    }
-
-    private fun addLiberateOption(city: City, conqueringCiv: Civilization) {
-        val button = "Liberate (city returns to [originalOwner])".fillPlaceholders(city.foundingCivObject!!.civName).toTextButton()
-        button.onActivation {
-            city.liberateCity(conqueringCiv)
-            close()
-        }
-        button.keyShortcuts.add('l')
-        add(button).row()
-        addGoodSizedLabel("Liberating a city returns it to its original owner, giving you a massive relationship boost with them!")
     }
 
     /** Returns if event was triggered correctly */

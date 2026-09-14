@@ -8,6 +8,7 @@ import com.unciv.logic.civilization.Civilization
 import com.unciv.logic.civilization.NotificationCategory
 import com.unciv.logic.civilization.NotificationIcon
 import com.unciv.logic.civilization.PopupAlert
+import com.unciv.logic.civilization.PlayerFriendshipOperations
 import com.unciv.logic.trade.Trade
 import com.unciv.logic.trade.TradeEvaluation
 import com.unciv.logic.trade.TradeLogic
@@ -698,8 +699,8 @@ class DiplomacyManager() : IsPartOfGameInfoSerialization {
         setModifier(DiplomaticModifiers.DeclarationOfFriendship, 35f)
         otherCivDiplomacy().setModifier(DiplomaticModifiers.DeclarationOfFriendship, 35f)
         // before adjusting with game speed - consider side effects
-        setFlag(DiplomacyFlags.DeclarationOfFriendship, 30)
-        otherCivDiplomacy().setFlag(DiplomacyFlags.DeclarationOfFriendship, 30)
+        setFlag(DiplomacyFlags.DeclarationOfFriendship, PlayerFriendshipOperations.DURATION)
+        otherCivDiplomacy().setFlag(DiplomacyFlags.DeclarationOfFriendship, PlayerFriendshipOperations.DURATION)
 
         for (thirdCiv in getCommonKnownCivsWithSpectators()) {
             thirdCiv.addNotification("[${civInfo.civName}] and [${otherCiv.civName}] have signed a Declaration of Friendship!",

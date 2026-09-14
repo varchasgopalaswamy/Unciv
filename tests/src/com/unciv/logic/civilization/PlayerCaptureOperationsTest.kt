@@ -44,6 +44,38 @@ class PlayerCaptureOperationsTest {
     }
 
     @Test
+    fun `traded city decision is owned and supports keeping or liberating without conquest`() {
+        val original = testGame.addCiv(testGame.ruleset.nations.getValue("Egypt"))
+        testGame.addCity(original, testGame.getTile(-5, -5))
+        val traded = testGame.addCity(original, testGame.getTile(3, 3))
+        traded.moveToCiv(player)
+        val alert = PopupAlert(AlertType.CityTraded, traded.id).also { player.popupAlerts.add(it) }
+        val decision = operations.captureDecision(alert)!!
+        assertEquals(setOf(CaptureChoice.KeepCity, CaptureChoice.Liberate), decision.options.map { it.choice }.toSet())
+        assertFalse(operations.tryResolve(PopupAlert(alert.type, alert.value), CaptureChoice.Liberate))
+        assertFalse(PlayerCaptureOperations(enemy).tryResolve(alert, CaptureChoice.Liberate))
+        assertFalse(operations.tryResolve(alert, CaptureChoice.Annex))
+        assertTrue(operations.tryResolve(alert, CaptureChoice.KeepCity))
+        assertSame(player, traded.civ)
+        assertFalse(operations.tryResolve(alert, CaptureChoice.KeepCity))
+        player.popupAlerts.add(alert)
+        assertTrue(operations.tryResolve(alert, CaptureChoice.Liberate))
+        assertSame(original, traded.civ)
+    }
+
+    @Test
+    fun `traded city cannot be liberated to an enemy and a transferred city cannot use stale consent`() {
+        city.moveToCiv(player)
+        val alert = PopupAlert(AlertType.CityTraded, city.id).also { player.popupAlerts.add(it) }
+        player.getDiplomacyManager(enemy)!!.declareWar()
+        assertEquals(listOf(CaptureChoice.KeepCity), operations.captureDecision(alert)!!.options.map { it.choice })
+        assertFalse(operations.tryResolve(alert, CaptureChoice.Liberate))
+        city.moveToCiv(enemy)
+        assertNull(operations.captureDecision(alert))
+        assertFalse(operations.tryResolve(alert, CaptureChoice.KeepCity))
+    }
+
+    @Test
     fun `a human conquering without a world screen retains the city decision`() {
         assertNull(UncivGame.Current.worldScreen)
         player.getDiplomacyManager(enemy)!!.declareWar()

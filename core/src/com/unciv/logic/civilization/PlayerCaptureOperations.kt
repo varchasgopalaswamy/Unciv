@@ -8,7 +8,7 @@ import com.unciv.logic.map.HexCoord
 import com.unciv.logic.map.mapunit.MapUnit
 import com.unciv.models.ruleset.unique.UniqueType
 
-enum class CaptureChoice { Annex, Puppet, Raze, Liberate, Destroy, StopRazing, ReturnCivilian, KeepCivilian }
+enum class CaptureChoice { Annex, Puppet, Raze, Liberate, Destroy, StopRazing, ReturnCivilian, KeepCivilian, KeepCity }
 
 /** The displayed explanation remains available for disabled choices. */
 data class CaptureOption(
@@ -52,8 +52,27 @@ class PlayerCaptureOperations(private val civ: Civilization, private val spectat
         return unit
     }
 
+    private fun tradedCity(alert: PopupAlert): City? {
+        if (!canRead() || alert.type != AlertType.CityTraded || civ.popupAlerts.none { it === alert }) return null
+        return civ.cities.firstOrNull { it.id == alert.value && it.foundingCivObject != null && it.foundingCivObject !== civ }
+    }
+
     /** Reads only an existing decision owned by this player; never dismisses stale alerts. */
     fun captureDecision(alert: PopupAlert): CaptureDecision? = synchronized(civ.gameInfo) {
+        tradedCity(alert)?.let { city ->
+            return@synchronized CaptureDecision(
+                title = "What would you like to do with the city of [${city.name}]?",
+                paragraphs = emptyList(),
+                options = buildList {
+                    if (!civ.isAtWarWith(city.foundingCivObject!!)) add(CaptureOption(
+                        CaptureChoice.Liberate, "Liberate (city returns to [${city.foundingCivObject!!.civName}])",
+                        listOf("Liberating a city returns it to its original owner, giving you a massive relationship boost with them!"),
+                    ))
+                    add(CaptureOption(CaptureChoice.KeepCity, "Keep it", emptyList()))
+                },
+                cityId = city.id,
+            )
+        }
         capturedCity(alert)?.let { city ->
             return@synchronized CaptureDecision(
                 title = "What would you like to do with the city of [${city.name}]?",
@@ -121,6 +140,13 @@ class PlayerCaptureOperations(private val civ: Civilization, private val spectat
                     city.isBeingRazed = true
                 }
                 CaptureChoice.Destroy -> { city.puppetCity(civ); city.destroyCity(overrideSafeties = true) }
+                else -> return@synchronized false
+            }
+        } else if (tradedCity(alert) != null) {
+            val traded = tradedCity(alert)!!
+            when (choice) {
+                CaptureChoice.Liberate -> traded.liberateCity(civ)
+                CaptureChoice.KeepCity -> Unit
                 else -> return@synchronized false
             }
         } else {
