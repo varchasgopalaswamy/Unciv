@@ -309,8 +309,8 @@ class Civilization : IsPartOfGameInfoSerialization {
         toReturn.notificationsLog.addAll(notificationsLog)
         toReturn.notificationCountAtStartTurn = notificationCountAtStartTurn
         toReturn.citiesCreated = citiesCreated
-        toReturn.popupAlerts.addAll(popupAlerts)
-        toReturn.tradeRequests.addAll(tradeRequests)
+        popupAlerts.mapTo(toReturn.popupAlerts) { it.clone() }
+        tradeRequests.mapTo(toReturn.tradeRequests) { it.clone() }
         toReturn.naturalWonders.addAll(naturalWonders)
         toReturn.cityStatePersonality = cityStatePersonality
         toReturn.cityStateResource = cityStateResource

@@ -3,6 +3,7 @@ package com.unciv.ui.screens.diplomacyscreen
 import com.badlogic.gdx.graphics.Color
 import com.badlogic.gdx.scenes.scene2d.ui.Table
 import com.badlogic.gdx.scenes.scene2d.ui.TextButton
+import com.unciv.logic.civilization.PlayerDiplomaticCommunicationOperations
 import com.unciv.Constants
 import com.unciv.UncivGame
 import com.unciv.logic.civilization.AlertType
@@ -135,7 +136,7 @@ class MajorCivDiplomacyTable(private val diplomacyScreen: DiplomacyScreen) {
         val denounceButton = "Denounce ([30] turns)".toTextButton()
         denounceButton.onClick {
             ConfirmPopup(diplomacyScreen, "Denounce [${otherCiv.civName}]?", "Denounce ([30] turns)") {
-                diplomacyManager.denounce()
+                if (!PlayerDiplomaticCommunicationOperations(viewingCiv).tryDenounce(otherCiv)) return@ConfirmPopup
                 diplomacyScreen.updateLeftSideTable(otherCiv)
                 diplomacyScreen.setRightSideFlavorText(
                     otherCiv,
@@ -239,7 +240,7 @@ class MajorCivDiplomacyTable(private val diplomacyScreen: DiplomacyScreen) {
                 button.disable()
             } else {
                 button.onClick {
-                    otherCiv.popupAlerts.add(PopupAlert(demand.demandAlert, viewingCiv.civID))
+                    PlayerDiplomaticCommunicationOperations(viewingCiv).tryDemand(otherCiv, demand)
                     button.disable()
                 }
             }

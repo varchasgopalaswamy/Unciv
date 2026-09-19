@@ -20,8 +20,10 @@ object TradeAutomation {
         for (tradeRequest in civInfo.tradeRequests.toList()) {
             val otherCiv = civInfo.gameInfo.getCivilization(tradeRequest.requestingCiv)
             // Treat 'no trade' state as if all trades are invalid - thus AIs will not update its "turns to offer"
-            if (!tradeAndChangeState || !TradeEvaluation().isTradeValid(tradeRequest.trade, civInfo, otherCiv))
+            if (!tradeAndChangeState || !TradeEvaluation().isTradeValid(tradeRequest.trade, civInfo, otherCiv)) {
+                tradeRequest.onResponse?.invoke("INVALID", null)
                 continue
+            }
 
             val tradeLogic = TradeLogic(civInfo, otherCiv)
             tradeLogic.currentTrade.set(tradeRequest.trade)
@@ -34,14 +36,17 @@ object TradeAutomation {
             if (TradeEvaluation().isTradeAcceptable(tradeLogic.currentTrade, civInfo, otherCiv)) {
                 tradeLogic.acceptTrade()
                 otherCiv.addNotification("[${civInfo.civName}] has accepted your trade request", NotificationCategory.Trade, NotificationIcon.Trade, civInfo.civName)
+                tradeRequest.onResponse?.invoke("ENACTED", null)
             } else {
                 val counteroffer = getCounteroffer(civInfo, tradeRequest)
                 if (counteroffer != null) {
                     otherCiv.addNotification("[${civInfo.civName}] has made a counteroffer to your trade request", NotificationCategory.Trade, NotificationIcon.Trade, civInfo.civName)
                     otherCiv.tradeRequests.add(counteroffer)
+                    tradeRequest.onResponse?.invoke("COUNTERED", counteroffer)
                 } else{
                     otherCiv.addNotification("[${civInfo.civName}] has denied your trade request", NotificationCategory.Trade, civInfo.civName, NotificationIcon.Trade)
                     tradeRequest.decline(civInfo)
+                    tradeRequest.onResponse?.invoke("DECLINED", null)
                 }
                     
             }

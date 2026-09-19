@@ -143,9 +143,11 @@ object NextTurnAutomation {
             && DiplomacyAutomation.wantsToSignDeclarationOfFrienship(civInfo, requestingCiv)) {
             diploManager.signDeclarationOfFriendship()
             requestingCiv.addNotification("We have signed a Declaration of Friendship with [${civInfo.civName}]!", NotificationCategory.Diplomacy, NotificationIcon.Diplomacy, civInfo.civName)
+            popupAlert.onResponse?.invoke(true)
         } else {
             diploManager.otherCivDiplomacy().setFlag(DiplomacyFlags.DeclinedDeclarationOfFriendship, 10)
             requestingCiv.addNotification("[${civInfo.civName}] has denied our Declaration of Friendship!", NotificationCategory.Diplomacy, NotificationIcon.Diplomacy, civInfo.civName)
+            popupAlert.onResponse?.invoke(false)
         }
     }
 

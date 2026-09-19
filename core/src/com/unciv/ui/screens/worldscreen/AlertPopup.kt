@@ -13,6 +13,7 @@ import com.unciv.logic.civilization.PlayerCaptureOperations
 import com.unciv.logic.civilization.NotificationCategory
 import com.unciv.logic.civilization.NotificationIcon
 import com.unciv.logic.civilization.PlayerOperations
+import com.unciv.logic.civilization.PlayerDiplomaticCommunicationOperations
 import com.unciv.logic.civilization.PlayerFriendshipOperations
 import com.unciv.logic.civilization.PopupAlert
 import com.unciv.logic.civilization.diplomacy.*
@@ -136,66 +137,28 @@ class AlertPopup(
 
     //region AlertType handlers
 
-    private fun addBorderConflict(): Boolean {
-        val civInfo = getCiv(popupAlert.value)
-        if (civInfo.isDefeated()) return false
-        addLeaderName(civInfo)
-        addGoodSizedLabel("Remove your troops in our border immediately!")
-        addCloseButton("Sorry.", KeyboardBinding.Confirm)
-        addCloseButton("Never!", KeyboardBinding.Cancel)
-        return true
-    }
-    
-    private fun addTilesStolen(): Boolean {
-        val civInfo = getCiv(popupAlert.value)
-        if (civInfo.isDefeated()) return false
-        addLeaderName(civInfo)
-        addGoodSizedLabel("Those lands were not yours to take. This has not gone unnoticed.")
-        addCloseButton()
-        return true
-    }
+    private fun addBorderConflict(): Boolean = addDiplomaticDecision()
 
-    private fun addBulliedOrAttackedProtectedOrAlliedMinor(): Boolean {
-        val involvedCivs = popupAlert.value.split('@')
-        val bullyOrAttacker = getCiv(involvedCivs[0])
-        if (bullyOrAttacker.isDefeated()) return false
-        val cityState = getCiv(involvedCivs[1])
-        val player = viewingCiv
-        addLeaderName(bullyOrAttacker)
+    private fun addTilesStolen(): Boolean = addDiplomaticDecision()
 
-        val isAtLeastNeutral = bullyOrAttacker.getDiplomacyManager(player)!!.isRelationshipLevelGE(RelationshipLevel.Neutral)
-        val text = when {
-            popupAlert.type == AlertType.BulliedProtectedMinor && isAtLeastNeutral ->  // Nice message
-                "I've been informed that my armies have taken tribute from [${cityState.civName}], a city-state under your protection.\nI assure you, this was quite unintentional, and I hope that this does not serve to drive us apart."
-            popupAlert.type == AlertType.BulliedProtectedMinor ->  // Nasty message
-                "We asked [${cityState.civName}] for a tribute recently and they gave in.\nYou promised to protect them from such things, but we both know you cannot back that up."
-            isAtLeastNeutral ->  // Nice message
-                "It's come to my attention that I may have attacked [${cityState.civName}].\nWhile it was not my goal to be at odds with your empire, this was deemed a necessary course of action."
-            else ->  // Nasty message
-                "I thought you might like to know that I've launched an invasion of one of your little pet states.\nThe lands of [${cityState.civName}] will make a fine addition to my own."
+    private fun addDiplomaticDecision(): Boolean {
+        val operations = PlayerDiplomaticCommunicationOperations(viewingCiv)
+        val decision = operations.decision(popupAlert) ?: return false
+        val other = getCiv(decision.civilizationId)
+        addLeaderName(other)
+        decision.content.paragraphs.forEach { addGoodSizedLabel(it).row() }
+        for (option in decision.options) {
+            val button = addButton(option.text, if (option.name in setOf("Acknowledge", "WithdrawProtection", "Refuse")) KeyboardBinding.Cancel else KeyboardBinding.Confirm) {
+                if (operations.tryRespond(popupAlert, option.name)) close()
+            }
+            if (!option.available) button.actor.disable()
+            button.row()
         }
-        addGoodSizedLabel(text).row()
-        
-        if (!player.isAtWarWith(bullyOrAttacker)) {
-            addCloseButton("THIS MEANS WAR!", KeyboardBinding.Confirm) {
-            player.getDiplomacyManager(bullyOrAttacker)!!.sideWithCityState()
-            val warReason = if (popupAlert.type == AlertType.AttackedAllyMinor) WarType.AlliedCityStateWar else WarType.ProtectedCityStateWar
-            player.getDiplomacyManager(bullyOrAttacker)!!.declareWar(DeclareWarReason(warReason, cityState))
-            cityState.getDiplomacyManager(player)!!.influence += 20f // You went to war for us!!
-        }.row()}
-
-        addCloseButton("You'll pay for this!", KeyboardBinding.Confirm) {
-            player.getDiplomacyManager(bullyOrAttacker)!!.sideWithCityState()
-        }.row()
-
-        addCloseButton("Very well.", KeyboardBinding.Cancel) {
-            player.addNotification("You have broken your Pledge to Protect [${cityState.civName}]!",
-                cityState.cityStateFunctions.getNotificationActions(), NotificationCategory.Diplomacy, cityState.civName)
-            cityState.cityStateFunctions.removeProtectorCiv(player, forced = true)
-        }.row()
-        
+        decision.voice?.let { music.playVoice("${other.nation.name}.$it") }
         return true
     }
+
+    private fun addBulliedOrAttackedProtectedOrAlliedMinor(): Boolean = addDiplomaticDecision()
 
     private fun addCityConquered() {
         val operations = PlayerCaptureOperations(viewingCiv)
@@ -216,14 +179,7 @@ class AlertPopup(
         }
     }
 
-    private fun addDemandViolationNoticed(demand: Demand): Boolean {
-        val otherciv = getCiv(popupAlert.value)
-        if (otherciv.isDefeated()) return false
-        addLeaderName(otherciv)
-        addGoodSizedLabel(demand.violationNoticedText).row()
-        addCloseButton("Very well.")
-        return true
-    }
+    private fun addDemandViolationNoticed(demand: Demand): Boolean = addDiplomaticDecision()
 
     private fun addCityTraded() {
         addCityConquered()
@@ -252,31 +208,8 @@ class AlertPopup(
         return true
     }
 
-    private fun addDenouncement(): Boolean {
-        val denouncer = getCiv(popupAlert.value)
-        if (denouncer.isDefeated())
-            return false
-        addLeaderName(denouncer)
-        addTopicHeader("DENOUNCEMENT", LIGHTER_ORANGE_COLOR)
-        // normal message unless we are enemies
-        val leaderMessage = if (denouncer.getDiplomacyManager(viewingCiv)!!.isRelationshipLevelGE(RelationshipLevel.Competitor)) {
-            music.playVoice("${denouncer.nation.name}.neutralDenouncing")
-            denouncer.nation.neutralDenouncing.ifEmpty { "You have violated our bond of trust. This is intolerable!" }
-        } else {
-            music.playVoice("${denouncer.nation.name}.hateDenouncing")
-            denouncer.nation.hateDenouncing.ifEmpty { "You are a scourge upon this earth. I denounce you!" }
-        }
-        addGoodSizedLabel(leaderMessage).row()
-        val diplomacy = viewingCiv.getDiplomacyManager(denouncer)!!
-        if (diplomacy.canDeclareWar()) {
-            addCloseButton("THIS MEANS WAR! (Declare war)") {
-                diplomacy.declareWar()
-            }.row()
-        }
-        addCloseButton("Very well.", KeyboardBinding.Cancel).row()
-        return true
-    }
-    
+    private fun addDenouncement(): Boolean = addDiplomaticDecision()
+
     private fun addDefeated() {
         val content = PlayerOperations(viewingCiv).informationalPopupContent(popupAlert) ?: return
         val civInfo = getCiv(popupAlert.value)
@@ -287,63 +220,11 @@ class AlertPopup(
         music.playVoice("${civInfo.civName}.defeated")
     }
 
-    private fun addDemand(demand: Demand): Boolean {
-        val otherciv = getCiv(popupAlert.value)
-        if (otherciv.isDefeated()) return false
-        
-        val playerDiploManager = viewingCiv.getDiplomacyManager(otherciv)!!
-        addLeaderName(otherciv)
-        addGoodSizedLabel(demand.demandText).row()
-        addCloseButton(demand.acceptDemandText, KeyboardBinding.Confirm) {
-            playerDiploManager.agreeToDemand(demand)
-        }.row()
-        addCloseButton(demand.refuseDemandText, KeyboardBinding.Cancel) {
-            playerDiploManager.refuseDemand(demand)
-            if (demand == Demand.DoNotAttackUs)
-                viewingCiv.getDiplomacyManager(otherciv)!!.declareWar()
-        }
-        return true
-    }
+    private fun addDemand(demand: Demand): Boolean = addDiplomaticDecision()
 
-    private fun addAcceptingDemand(): Boolean {
-        val otherCiv = getCiv(popupAlert.value)
-        if (otherCiv.isDefeated())
-            return false
-        addLeaderName(otherCiv)
-        addTopicHeader("ACCEPTING DEMAND", Color.YELLOW)
-        val leaderMessage = otherCiv.nation.acceptingDemand.ifEmpty {
-            "We will comply, but our consent is given grudgingly."
-        }
-        addGoodSizedLabel(leaderMessage).row()
-        music.playVoice("${otherCiv.civName}.acceptingDemand")
-        addCloseButton("Very well.", KeyboardBinding.Cancel)
-        return true
-    }
-    
-    private fun addRejectingDemand(): Boolean {
-        val otherCiv = getCiv(popupAlert.value)
-        if (otherCiv.isDefeated())
-            return false
-        addLeaderName(otherCiv)
-        addTopicHeader("REJECTING DEMAND", LIGHTER_ORANGE_COLOR)
-        val theirDiplomacy = otherCiv.getDiplomacyManager(viewingCiv)!!
-        val leaderMessage = if (theirDiplomacy.isRelationshipLevelGE(RelationshipLevel.Competitor)) {
-            music.playVoice("${otherCiv.nation.name}.neutralRejectingDemand")
-            otherCiv.nation.neutralRejectingDemand.ifEmpty {
-                "Your demands are in poor taste. We shall decide this matter on our own."
-            }
-        } else {
-            music.playVoice("${otherCiv.nation.name}.hateRejectingDemand")
-            otherCiv.nation.hateRejectingDemand.ifEmpty {
-                "Did you really expect us to bend to such brazen demands?"
-            }
-        }
-        addGoodSizedLabel(leaderMessage).row()
-        addCloseButton("You'll pay for this!")
-        addCloseButton("Very well.", KeyboardBinding.Cancel)
-        equalizeLastTwoButtonWidths()
-        return true
-    }
+    private fun addAcceptingDemand(): Boolean = addDiplomaticDecision()
+
+    private fun addRejectingDemand(): Boolean = addDiplomaticDecision()
 
     private fun addDiplomaticMarriage() {
         val city = getCity(popupAlert.value)

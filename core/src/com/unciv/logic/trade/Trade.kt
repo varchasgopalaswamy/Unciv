@@ -53,6 +53,19 @@ class Trade : IsPartOfGameInfoSerialization {
 
 
 class TradeRequest : IsPartOfGameInfoSerialization {
+    /** Optional caller correlation, preserved across save/load without affecting trade evaluation. */
+    var requestId: String = ""
+
+    /** A synchronous notification after native AI processing, never serialized or used for decisions. */
+    @Transient
+    var onResponse: ((String, TradeRequest?) -> Unit)? = null
+
+    /** Game copies retain correlation but must not invoke observers attached to the original game. */
+    fun clone() = TradeRequest(requestingCiv, Trade().apply {
+        trade.ourOffers.mapTo(ourOffers) { it.copy() }
+        trade.theirOffers.mapTo(theirOffers) { it.copy() }
+    }).also { it.requestId = requestId }
+
     fun decline(decliningCiv: Civilization) {
         val requestingCivInfo = decliningCiv.gameInfo.getCivilization(requestingCiv)
         val requestingCivDiploManager = requestingCivInfo.getDiplomacyManager(decliningCiv)!!
