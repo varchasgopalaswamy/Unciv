@@ -283,6 +283,16 @@ object UnitActionsFromUniques {
         val unique = unit.getMatchingUniques(UniqueType.CreateWaterImprovements).firstOrNull()
         if (!tile.isWater || unique == null) return null
 
+        if (unit.civ.isHuman()) {
+            val operations = com.unciv.logic.civilization.PlayerWaterImprovementOperations(unit.civ)
+            val option = operations.option(unit) ?: return null
+            return UnitAction(UnitActionType.CreateImprovement, getUseFrequency(unit, unique, 82f), option.title,
+                action = {
+                    if (unit.currentTile === tile) operations.tryCreate(unit, option.name)
+                    Unit
+                }.takeIf { option.available })
+        }
+
         val improvement = tile.tileResource?.getImprovingImprovement(tile, unit.cache.state) ?: return null
         if (!tile.improvementFunctions.canBuildImprovement(improvement, unit.cache.state)) return null
         val useFrequency = getUseFrequency(unit, unique, 82f)

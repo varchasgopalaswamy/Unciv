@@ -238,7 +238,7 @@ object UnitActions {
 
     private suspend fun SequenceScope<UnitAction>.addDisbandAction(unit: MapUnit) {
         val operations = PlayerUnitEconomyOperations(unit.civ)
-        val ordinaryPlayerUnit = unit.civ.isHuman() && unit.baseUnit.isLandUnit
+        val ordinaryPlayerUnit = unit.civ.isHuman() && operations.supports(unit)
         val available = if (ordinaryPlayerUnit) operations.disband(unit)?.available == true else unit.hasMovement()
         yield(UnitAction(type = UnitActionType.DisbandUnit,
             useFrequency = 0f, // Only can happen once per unit

@@ -14,9 +14,9 @@ import com.unciv.models.ruleset.unique.UniqueType
 import yairm210.purity.annotations.Readonly
 
 /**
- * Player-controlled land combat and city bombardment. Queries show visible enemies and speculative routes;
+ * Player-controlled land/naval combat and city bombardment. Queries show visible enemies and speculative routes;
  * execution rechecks the route, target identity, visibility and range after moving.
- * Naval combat, air missions, nuclear attacks and declarations of war use separate operations.
+ * Air missions, nuclear attacks and declarations of war use separate operations.
  */
 class PlayerCombatOperations(private val civ: Civilization, private val spectatorMode: Boolean = false) {
     data class AttackPreview(
@@ -50,7 +50,7 @@ class PlayerCombatOperations(private val civ: Civilization, private val spectato
 
     @Readonly
     fun supportsAttack(unit: MapUnit): Boolean = PlayerUnitOperations(civ).owns(unit) &&
-        !unit.isCivilian() && unit.baseUnit.isLandUnit && !unit.isNuclearWeapon() &&
+        !unit.isCivilian() && (unit.baseUnit.isLandUnit || unit.baseUnit.isWaterUnit) && !unit.isNuclearWeapon() &&
         !unit.isPreparingParadrop() && !unit.isPreparingAirSweep()
 
     @Readonly @Suppress("purity") // Detached planning paths and result collections only

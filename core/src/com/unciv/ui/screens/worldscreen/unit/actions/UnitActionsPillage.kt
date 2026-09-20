@@ -32,7 +32,7 @@ object UnitActionsPillage {
         val improvementName = tile.getImprovementToPillageName()
         if (unit.isCivilian() || improvementName == null || tile.getOwner() == unit.civ) return null
         val operations = PlayerUnitEconomyOperations(unit.civ)
-        val ordinaryPlayerUnit = unit.civ.isHuman() && unit.baseUnit.isLandUnit
+        val ordinaryPlayerUnit = unit.civ.isHuman() && operations.supports(unit)
         val available = if (ordinaryPlayerUnit) operations.pillage(unit)?.available == true
             else unit.hasMovement() && canPillage(unit, tile)
         return UnitAction(

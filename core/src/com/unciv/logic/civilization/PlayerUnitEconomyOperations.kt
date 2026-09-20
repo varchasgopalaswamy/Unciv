@@ -9,7 +9,7 @@ import com.unciv.models.ruleset.unit.BaseUnit
 import com.unciv.models.translations.tr
 import java.util.Collections
 
-/** Validated ordinary land-unit upgrades, pillaging and disbanding.
+/** Validated ordinary land/naval upgrades, pillaging and disbanding.
  *
  * Paid upgrades replace a unit on its current tile, retaining its identity and
  * statistics through the normal upgrade manager. Domain-changing upgrades and
@@ -46,7 +46,10 @@ class PlayerUnitEconomyOperations(private val civ: Civilization, private val spe
     data class DisbandOption(val gold: Int, val available: Boolean, val reasons: List<String>, val confirmation: String)
 
     private fun canInspect(unit: MapUnit): Boolean = !spectatorMode && !civ.isSpectator() &&
-        unit.baseUnit.isLandUnit && civ.gameInfo.civilizations.any { it === civ } && PlayerUnitOperations(civ).owns(unit)
+        (unit.baseUnit.isLandUnit || unit.baseUnit.isWaterUnit) &&
+        civ.gameInfo.civilizations.any { it === civ } && PlayerUnitOperations(civ).owns(unit)
+
+    fun supports(unit: MapUnit): Boolean = canInspect(unit)
 
     private fun actionReasons(unit: MapUnit): MutableList<String> = mutableListOf<String>().apply {
         if (!PlayerOperations(civ, spectatorMode).canAct()) add("This player cannot act now")
@@ -56,7 +59,9 @@ class PlayerUnitEconomyOperations(private val civ: Civilization, private val spe
     private fun targets(unit: MapUnit): List<BaseUnit> {
         val names = unit.baseUnit.getMatchingUniques(UniqueType.CanUpgrade, unit.cache.state).map { it.params[0] }.toList() +
             listOfNotNull(unit.baseUnit.upgradesTo)
-        return names.map(civ::getEquivalentUnit).distinctBy { it.name }.filter { it.name != unit.name && it.isLandUnit }
+        return names.map(civ::getEquivalentUnit).distinctBy { it.name }.filter {
+            it.name != unit.name && (unit.baseUnit.isLandUnit && it.isLandUnit || unit.baseUnit.isWaterUnit && it.isWaterUnit)
+        }
     }
 
     /** Checks only the replacement's ability to occupy this already-visible tile.
