@@ -9,7 +9,7 @@ import com.unciv.models.ruleset.unit.BaseUnit
 import com.unciv.models.translations.tr
 import java.util.Collections
 
-/** Validated ordinary land/naval upgrades, pillaging and disbanding.
+/** Validated ordinary land, naval and aircraft upgrades, pillaging and disbanding.
  *
  * Paid upgrades replace a unit on its current tile, retaining its identity and
  * statistics through the normal upgrade manager. Domain-changing upgrades and
@@ -46,7 +46,6 @@ class PlayerUnitEconomyOperations(private val civ: Civilization, private val spe
     data class DisbandOption(val gold: Int, val available: Boolean, val reasons: List<String>, val confirmation: String)
 
     private fun canInspect(unit: MapUnit): Boolean = !spectatorMode && !civ.isSpectator() &&
-        (unit.baseUnit.isLandUnit || unit.baseUnit.isWaterUnit) &&
         civ.gameInfo.civilizations.any { it === civ } && PlayerUnitOperations(civ).owns(unit)
 
     fun supports(unit: MapUnit): Boolean = canInspect(unit)
@@ -60,7 +59,8 @@ class PlayerUnitEconomyOperations(private val civ: Civilization, private val spe
         val names = unit.baseUnit.getMatchingUniques(UniqueType.CanUpgrade, unit.cache.state).map { it.params[0] }.toList() +
             listOfNotNull(unit.baseUnit.upgradesTo)
         return names.map(civ::getEquivalentUnit).distinctBy { it.name }.filter {
-            it.name != unit.name && (unit.baseUnit.isLandUnit && it.isLandUnit || unit.baseUnit.isWaterUnit && it.isWaterUnit)
+            it.name != unit.name && (unit.baseUnit.isLandUnit && it.isLandUnit || unit.baseUnit.isWaterUnit && it.isWaterUnit ||
+                unit.baseUnit.isAirUnit() && it.isAirUnit())
         }
     }
 
@@ -73,6 +73,7 @@ class PlayerUnitEconomyOperations(private val civ: Civilization, private val spe
         val replacement = target.newMapUnit(civ, unit.id)
         replacement.currentTile = unit.currentTile
         replacement.cache.state = GameContext(replacement)
+        if (replacement.baseUnit.isAirUnit()) return replacement.movement.canReplaceAirUnitAt(unit.currentTile, unit)
         // The old unit will be removed first. Never ignore a different unit's slot,
         // including civilian-to-military upgrades on an escorted tile.
         val occupant = if (replacement.isCivilian()) unit.currentTile.civilianUnit else unit.currentTile.militaryUnit

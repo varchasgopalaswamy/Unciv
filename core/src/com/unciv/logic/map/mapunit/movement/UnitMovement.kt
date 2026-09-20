@@ -359,7 +359,7 @@ class UnitMovement(val unit: MapUnit) {
             unit.baseUnit.isAirUnit() ->
                 unit.getTile().getTilesInDistanceRange(IntRange(1, unit.getMaxMovementForAirUnits()))
             unit.isPreparingParadrop() -> {
-                unit.getTile().getTilesInDistance(unit.cache.paradropDestinationTileFilters.maxOf { it.value } )
+                unit.getTile().getTilesInDistance(unit.getParadropDestinationTileFilters().values.maxOrNull() ?: 0)
                     .filter { unit.movement.canParadropOn(it, it.aerialDistanceTo(unit.getTile())) }
             }
             includeOtherEscortUnit && unit.isEscorting() -> {
@@ -767,23 +767,30 @@ class UnitMovement(val unit: MapUnit) {
     }
 
     @Readonly
-    private fun getAirUnitCannotMoveToReason(tile: Tile, unit: MapUnit): CannotMoveToReason? {
+    private fun getAirUnitCannotMoveToReason(tile: Tile, unit: MapUnit, excludingUnit: MapUnit? = null): CannotMoveToReason? {
         // landing in the city
         if (tile.isCityCenter()) {
-            if (tile.airUnits.filter { !it.isTransported }.size < tile.getCity()!!.getMaxAirUnits() && tile.getCity()?.civ == unit.civ)
+            if (tile.airUnits.count { !it.isTransported && it !== excludingUnit } < tile.getCity()!!.getMaxAirUnits() && tile.getCity()?.civ == unit.civ)
                 return null // if city is free - no problem, get in
         } // let's check whether it enters city on carrier now...
 
         if (tile.militaryUnit != null) {
             val unitAtDestination = tile.militaryUnit!!
-            if (unitAtDestination.canTransport(unit)) return null
+            if (unitAtDestination.canTransport(unit, excludingUnit)) return null
         }
         return CannotMoveToReason.NoAirUnitTransport
     }
 
+    /** Capacity after replacing one owned aircraft, without removing it during a query. */
+    @Readonly
+    fun canReplaceAirUnitAt(tile: Tile, replaced: MapUnit): Boolean =
+        unit.baseUnit.isAirUnit() && replaced.baseUnit.isAirUnit() && replaced.civ === unit.civ &&
+            replaced.currentTile === tile && tile.airUnits.any { it === replaced } &&
+            getAirUnitCannotMoveToReason(tile, unit, replaced) == null
+
     // Can a paratrooper land at this tile?
     @Readonly
-    private fun canParadropOn(destination: Tile, distance: Int): Boolean {
+    fun canParadropOn(destination: Tile, distance: Int = unit.currentTile.aerialDistanceTo(destination)): Boolean {
         if (unit.cache.cannotMove) return false
 
         // Can only move to tiles within range that are visible and not impassible
@@ -791,7 +798,7 @@ class UnitMovement(val unit: MapUnit) {
         if (destination.isImpassible() || !unit.civ.viewableTiles.contains(destination)) return false
 
         // The destination is valid if any of the `tileFilters` match, and is within range
-        for ((tileFilter, distanceAllowed) in unit.cache.paradropDestinationTileFilters) {
+        for ((tileFilter, distanceAllowed) in unit.getParadropDestinationTileFilters()) {
             if (distance <= distanceAllowed && destination.matchesFilter(tileFilter, unit.civ)) return true
         }
 

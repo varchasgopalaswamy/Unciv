@@ -8,15 +8,14 @@ import com.badlogic.gdx.scenes.scene2d.ui.Label
 import com.badlogic.gdx.scenes.scene2d.ui.ScrollPane
 import com.badlogic.gdx.scenes.scene2d.ui.Table
 import com.badlogic.gdx.utils.Align
-import com.unciv.logic.battle.AirInterception
 import com.unciv.logic.battle.AttackableTile
 import com.unciv.logic.battle.Battle
 import com.unciv.logic.battle.BattleDamage
 import com.unciv.logic.battle.CityCombatant
 import com.unciv.logic.battle.ICombatant
 import com.unciv.logic.battle.MapUnitCombatant
-import com.unciv.logic.battle.Nuke
 import com.unciv.logic.battle.TargetHelper
+import com.unciv.logic.civilization.PlayerAirOperations
 import com.unciv.logic.civilization.PlayerCombatOperations
 import com.unciv.logic.map.tile.Tile
 import com.unciv.models.UncivSound
@@ -410,7 +409,9 @@ class BattleTable(val worldScreen: WorldScreen) : Table() {
         attackerNameWrapper.add(attackerLabel)
         add(attackerNameWrapper)
 
-        val canNuke = Nuke.mayUseNuke(attacker, targetTile)
+        val operations = PlayerAirOperations(attacker.getCivInfo())
+        val preview = operations.preview(attacker.unit, PlayerAirOperations.Mission.NUCLEAR_STRIKE, targetTile)
+        val canNuke = preview?.available == true
 
         val blastRadius = attacker.unit.getNukeBlastRadius()
 
@@ -434,7 +435,7 @@ class BattleTable(val worldScreen: WorldScreen) : Table() {
             attackButton.label.color = Color.GRAY
         } else {
             attackButton.onClick(attacker.getAttackSound()) {
-                Nuke.NUKE(attacker, targetTile)
+                if (!operations.tryExecute(attacker.unit, PlayerAirOperations.Mission.NUCLEAR_STRIKE, targetTile)) return@onClick
 
                 val nukeCircle = ImageGetter.getCircle()
                 nukeCircle.setSize(10f)
@@ -505,7 +506,7 @@ class BattleTable(val worldScreen: WorldScreen) : Table() {
         }
         else {
             attackButton.onClick(attacker.getAttackSound()) {
-                AirInterception.airSweep(attacker, targetTile)
+                if (!PlayerAirOperations(attacker.getCivInfo()).tryExecute(attacker.unit, PlayerAirOperations.Mission.AIR_SWEEP, targetTile)) return@onClick
                 worldScreen.mapHolder.removeUnitActionOverlay() // the overlay was one of attacking
                 worldScreen.shouldUpdate = true
             }

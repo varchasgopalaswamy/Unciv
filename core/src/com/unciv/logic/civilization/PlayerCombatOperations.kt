@@ -1,5 +1,6 @@
 package com.unciv.logic.civilization
 
+import com.unciv.logic.battle.AttackResolution
 import com.unciv.logic.battle.Battle
 import com.unciv.logic.battle.BattleDamage
 import com.unciv.logic.battle.CityCombatant
@@ -14,9 +15,9 @@ import com.unciv.models.ruleset.unique.UniqueType
 import yairm210.purity.annotations.Readonly
 
 /**
- * Player-controlled land/naval combat and city bombardment. Queries show visible enemies and speculative routes;
+ * Player-controlled land, naval and air combat and city bombardment. Queries show visible enemies and speculative routes;
  * execution rechecks the route, target identity, visibility and range after moving.
- * Air missions, nuclear attacks and declarations of war use separate operations.
+ * Air sweeps, nuclear attacks and declarations of war use separate operations.
  */
 class PlayerCombatOperations(private val civ: Civilization, private val spectatorMode: Boolean = false) {
     data class AttackPreview(
@@ -46,11 +47,12 @@ class PlayerCombatOperations(private val civ: Civilization, private val spectato
         val attackerDestroyed: Boolean,
         val defenderDestroyed: Boolean,
         val defenderCaptured: Boolean,
+        val resolution: AttackResolution? = null,
     )
 
     @Readonly
     fun supportsAttack(unit: MapUnit): Boolean = PlayerUnitOperations(civ).owns(unit) &&
-        !unit.isCivilian() && (unit.baseUnit.isLandUnit || unit.baseUnit.isWaterUnit) && !unit.isNuclearWeapon() &&
+        !unit.isCivilian() && !unit.isNuclearWeapon() &&
         !unit.isPreparingParadrop() && !unit.isPreparingAirSweep()
 
     @Readonly @Suppress("purity") // Detached planning paths and result collections only
@@ -58,7 +60,7 @@ class PlayerCombatOperations(private val civ: Civilization, private val spectato
         if (!PlayerOperations(civ, spectatorMode).canAct() || !supportsAttack(unit) || !unit.canAttack())
             return emptyList()
         val distances = unit.movement.getMovementToTilesAtPosition(unit.currentTile.position,
-            unit.currentMovement, forPlanning = true)
+            if (unit.baseUnit.isAirUnit()) 0f else unit.currentMovement, forPlanning = true)
         val attacker = MapUnitCombatant(unit)
         return TargetHelper.getAttackableEnemies(unit, distances, forPlanning = true).mapNotNull { offer ->
             // A damage preview uses terrain at the origin (rivers, coast, etc.). Move to an
@@ -90,7 +92,7 @@ class PlayerCombatOperations(private val civ: Civilization, private val spectato
             ?: return@synchronized null
         val defender = offer.defender
         unit.action = unit.action.takeIf { it == UnitActionType.SetUp.value }
-        unit.movement.moveToTile(attackFrom, plannedPath = offer.path)
+        if (!unit.baseUnit.isAirUnit()) unit.movement.moveToTile(attackFrom, plannedPath = offer.path)
         if (unit.isDestroyed || unit.currentTile !== attackFrom)
             return@synchronized result(offer.attacker, defender, false, Battle.DamageDealt.None)
 
@@ -104,12 +106,14 @@ class PlayerCombatOperations(private val civ: Civilization, private val spectato
             TargetHelper.getAttackableEnemies(unit, unit.movement.getDistanceToTiles(), stayOnTile = true)
                 .any { it.tileToAttack === target }
         if (!stillAttackable) return@synchronized result(offer.attacker, defender, false, Battle.DamageDealt.None)
-        result(offer.attacker, defender, true, Battle.attack(offer.attacker, defender))
+        val outcome = Battle.attackWithResult(offer.attacker, defender)
+        result(offer.attacker, defender, true, outcome.damage).copy(resolution = outcome.resolution)
     }
 
     fun tryAttack(city: City, target: Tile): AttackResult? = synchronized(civ.gameInfo) {
         val offer = attacks(city).firstOrNull { it.target === target } ?: return@synchronized null
-        result(offer.attacker, offer.defender, true, Battle.attack(offer.attacker, offer.defender))
+        val outcome = Battle.attackWithResult(offer.attacker, offer.defender)
+        result(offer.attacker, offer.defender, true, outcome.damage).copy(resolution = outcome.resolution)
     }
 
     @Readonly

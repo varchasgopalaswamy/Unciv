@@ -101,7 +101,10 @@ object Battle {
         }
     }
 
-    fun attack(attacker: ICombatant, defender: ICombatant): DamageDealt {
+    fun attack(attacker: ICombatant, defender: ICombatant): DamageDealt = attackWithResult(attacker, defender).damage
+
+    /** Native resolution, including an interception that prevented the intended strike. */
+    fun attackWithResult(attacker: ICombatant, defender: ICombatant): AttackResult {
         debug("%s %s attacked %s %s", attacker.getCivInfo().civID, attacker.getName(), defender.getCivInfo().civID, defender.getName())
         val gameInfo = attacker.getCivInfo().gameInfo
         val attackRecorder = AttackRecorder(attacker, defender.getTile())
@@ -118,10 +121,10 @@ object Battle {
         val event = attackRecorder.finish(result.resolution)
         gameInfo.storeAttack(event)
         gameInfo.publishAttackNotifications(event)
-        return result.damage
+        return result
     }
 
-    private data class AttackResult(val damage: DamageDealt, val resolution: AttackResolution)
+    data class AttackResult(val damage: DamageDealt, val resolution: AttackResolution)
 
     private fun performAttack(attacker: ICombatant, defender: ICombatant, attackRecorder: AttackRecorder): AttackResult {
         val attackedTile = defender.getTile()

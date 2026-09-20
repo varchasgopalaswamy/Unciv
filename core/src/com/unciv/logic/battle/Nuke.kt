@@ -11,7 +11,6 @@ import com.unciv.logic.map.tile.Tile
 import com.unciv.models.ruleset.unique.GameContext
 import com.unciv.models.ruleset.unique.UniqueType
 import com.unciv.ui.components.extensions.toPercent
-import com.unciv.ui.screens.worldscreen.bottombar.BattleTable
 import yairm210.purity.annotations.Readonly
 import kotlin.math.ulp
 
@@ -22,10 +21,10 @@ object Nuke {
      *  - Not if we would need to declare war on someone we can't.
      *  - Disallow nuking the tile the nuke is in, as per Civ5 (but not nuking your own tiles/units otherwise)
      *
-     *  Both [BattleTable.simulateNuke] and [AirUnitAutomation.automateNukes] check range, so that check is omitted here.
+     *  Planning considers only explored owners and visible combatants. Execution must use the default full-state check.
      */
     @Readonly
-    fun mayUseNuke(nuke: MapUnitCombatant, targetTile: Tile): Boolean {
+    fun mayUseNuke(nuke: MapUnitCombatant, targetTile: Tile, forPlanning: Boolean = false): Boolean {
         val attackerCiv = nuke.getCivInfo()
         val launchTile = nuke.getTile()
         
@@ -50,17 +49,25 @@ object Nuke {
 
         val blastRadius = nuke.unit.getNukeBlastRadius()
         for (tile in targetTile.getTilesInDistance(blastRadius)) {
-            checkDefenderCiv(tile.getOwner())
-            checkDefenderCiv(Battle.getMapCombatantOfTile(tile)?.getCivInfo())
+            if (!forPlanning || tile.isExplored(attackerCiv)) checkDefenderCiv(tile.getOwner())
+            val combatant = Battle.getMapCombatantOfTile(tile)
+            if (!forPlanning || combatant is CityCombatant && tile.isVisible(attackerCiv) ||
+                combatant is MapUnitCombatant && combatant.unit.isVisibleTo(attackerCiv))
+                checkDefenderCiv(combatant?.getCivInfo())
         }
         return canNuke
     }
 
-    @Suppress("FunctionName")   // Yes we want this name to stand out
+    @Suppress("FunctionName")   // Retain the existing effect-only entry point.
     fun NUKE(attacker: MapUnitCombatant, targetTile: Tile) {
+        nukeWithResult(attacker, targetTile)
+    }
+
+    /** Resolution of this launch, without exposing the recorded victims or interceptors. */
+    fun nukeWithResult(attacker: MapUnitCombatant, targetTile: Tile): AttackResolution? {
         val attackingCiv = attacker.getCivInfo()
         val nukeStrength = attacker.unit.getMatchingUniques(UniqueType.NuclearWeapon)
-            .firstOrNull()?.params?.get(0)?.toInt() ?: return
+            .firstOrNull()?.params?.get(0)?.toInt() ?: return null
 
         val blastRadius = attacker.unit.getMatchingUniques(UniqueType.BlastRadius)
             .firstOrNull()?.params?.get(0)?.toInt() ?: 2
@@ -82,6 +89,7 @@ object Nuke {
         val event = attackRecorder.finish(resolution)
         attackingCiv.gameInfo.storeAttack(event)
         attackingCiv.gameInfo.publishAttackNotifications(event)
+        return resolution
     }
 
     private fun performNuke(

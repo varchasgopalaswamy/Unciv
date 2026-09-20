@@ -343,6 +343,8 @@ class WorldMapHolder(
                     val previousTileView = selectedUnitView.getTile()
                     if (ordinaryMovement) {
                         if (!selectedUnitView.trySetDestination(targetTileView)) return@launchOnGLThread
+                    } else if (selectedUnitView.specialMovementMission() != null) {
+                        if (!selectedUnitView.tryHeadTowards(targetTileView)) return@launchOnGLThread
                     } else selectedUnit.movement.moveToTile(tileToMoveTo)
 
                     // If you try to send a unit to a tile that it can't even get nearer to, then this is actualy a dud

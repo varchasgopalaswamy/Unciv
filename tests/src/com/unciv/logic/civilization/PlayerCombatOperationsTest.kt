@@ -251,9 +251,9 @@ class PlayerCombatOperationsTest {
     }
 
     @Test
-    fun `unsupported air nuclear and civilian units are explicit and have no attack offers`() {
+    fun `unsupported nuclear and civilian units are explicit and have no attack offers`() {
         val city = game.addCity(player, game.getTile(-2, 0))
-        for (name in listOf("Fighter", "Atomic Bomb", "Worker")) {
+        for (name in listOf("Atomic Bomb", "Worker")) {
             val unit = game.addUnit(name, player, city.getCenterTile())
             assertFalse(name, operations.supportsAttack(unit))
             assertTrue(name, operations.attacks(unit).isEmpty())

@@ -287,6 +287,12 @@ class MapUnit : IsPartOfGameInfoSerialization {
 
     @Readonly fun isAutomatingRoadConnection() = action == UnitActionType.ConnectRoad.value
     @Readonly fun isExploring() = action == UnitActionType.Explore.value
+    /** Native paradrop filters, evaluated without changing selection-mode caches. */
+    @Readonly @Suppress("purity")
+    fun getParadropDestinationTileFilters(): Map<String, Int> =
+        getMatchingUniques(UniqueType.MayParadrop, cache.state).groupBy { it.params[0] }
+            .mapValues { (_, uniques) -> uniques.maxOf { it.params[1].toInt() } }
+
     @Readonly fun isPreparingParadrop() = action == UnitActionType.Paradrop.value
     @Readonly fun isPreparingAirSweep() = action == UnitActionType.AirSweep.value
     @Readonly fun isSetUpForSiege() = action == UnitActionType.SetUp.value
@@ -622,7 +628,7 @@ class MapUnit : IsPartOfGameInfoSerialization {
      *  - Uses an optimizing algorithm that ensures complex overlapping filters are used to the max.
      *  - See issue [#15087](https://github.com/yairm210/Unciv/issues/15087)
      */
-    fun checkCarryCapacity(unit: MapUnit): Int {
+    fun checkCarryCapacity(unit: MapUnit, excludingUnit: MapUnit? = null): Int {
         // Fetch ALL "slots", not only those the new unit could occupy - otherwise we couldn't count optimally
         @LocalState
         val slots = mutableListOf<CarrierSlotMatcher.SlotRule>()
@@ -637,7 +643,7 @@ class MapUnit : IsPartOfGameInfoSerialization {
 
         return CarrierSlotMatcher.availableCapacity(
             slotRules = slots,
-            carriedUnits = currentTile.airUnits.asSequence().filter { it.isTransported },
+            carriedUnits = currentTile.airUnits.asSequence().filter { it.isTransported && it !== excludingUnit },
             newUnit = unit
         )
     }
@@ -647,11 +653,11 @@ class MapUnit : IsPartOfGameInfoSerialization {
         unit.getMatchingUniques(UniqueType.CannotBeCarriedBy).any { matchesFilter(it.params[0]) }
 
     @Readonly
-    fun canTransport(unit: MapUnit): Boolean {
+    fun canTransport(unit: MapUnit, excludingUnit: MapUnit? = null): Boolean {
         if (owner != unit.owner) return false
         if (!isTransportTypeOf(unit)) return false
         if (cannotCarry(unit)) return false
-        if (checkCarryCapacity(unit) <= 0) return false
+        if (checkCarryCapacity(unit, excludingUnit) <= 0) return false
         return true
     }
 

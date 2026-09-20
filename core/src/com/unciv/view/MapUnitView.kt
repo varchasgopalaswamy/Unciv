@@ -1,6 +1,7 @@
 package com.unciv.view
 
 import com.unciv.logic.civilization.Civilization
+import com.unciv.logic.civilization.PlayerAirOperations
 import com.unciv.logic.civilization.PlayerUnitOperations
 import com.unciv.logic.civilization.PlayerOperations
 import com.unciv.logic.map.MapPathing
@@ -35,8 +36,18 @@ class MapUnitView internal constructor(
     @Readonly fun supportsDestinationOrders(): Boolean = PlayerUnitOperations(viewer, spectatorMode).supportsMovement(unit)
     @Readonly fun getMovementRoute(tileView: TileView): PlayerUnitOperations.RoutePreview? =
         PlayerUnitOperations(viewer, spectatorMode).route(unit, tileView.unwrap())
-    @Readonly fun canReach(tileView: TileView): Boolean =
-        if (supportsDestinationOrders()) getMovementRoute(tileView) != null else unit.movement.canReach(tileView.unwrap())
+    @Readonly fun specialMovementMission(): PlayerAirOperations.Mission? = when {
+        unit.isPreparingParadrop() -> PlayerAirOperations.Mission.PARADROP
+        unit.baseUnit.isAirUnit() -> PlayerAirOperations.Mission.REBASE
+        else -> null
+    }
+    @Readonly fun specialMovementPreview(tileView: TileView): PlayerAirOperations.Preview? =
+        specialMovementMission()?.let { PlayerAirOperations(viewer, spectatorMode).preview(unit, it, tileView.unwrap()) }
+    @Readonly fun canReach(tileView: TileView): Boolean = when {
+        specialMovementMission() != null -> specialMovementPreview(tileView)?.available == true
+        supportsDestinationOrders() -> getMovementRoute(tileView) != null
+        else -> unit.movement.canReach(tileView.unwrap())
+    }
     @Readonly fun getShortestPath(tileView: TileView): List<TileView> =
         if (supportsDestinationOrders()) getMovementRoute(tileView)?.turns?.map { gameView.tileMapView.getTile(it.destination) } ?: emptyList()
         else unit.movement.getShortestPath(tileView.unwrap()).map { gameView.tileMapView.getTile(it) }
@@ -99,6 +110,7 @@ class MapUnitView internal constructor(
         val operations = PlayerUnitOperations(viewer, spectatorMode)
         if (!PlayerOperations(viewer, spectatorMode).canAct() || !operations.owns(unit)) return false
         if (supportsDestinationOrders()) return operations.trySetDestination(unit, tileView.unwrap())
+        specialMovementMission()?.let { return PlayerAirOperations(viewer, spectatorMode).tryExecute(unit, it, tileView.unwrap()) }
         unit.movement.headTowards(tileView.unwrap())
         return true
     }
