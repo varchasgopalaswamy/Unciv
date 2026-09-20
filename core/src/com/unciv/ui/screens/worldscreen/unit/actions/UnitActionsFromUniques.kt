@@ -254,6 +254,12 @@ object UnitActionsFromUniques {
     internal fun getAddInCapitalActions(unit: MapUnit, tile: Tile): Sequence<UnitAction> {
         val unique = unit.getMatchingUniques(UniqueType.AddInCapital).firstOrNull() ?: return emptySequence()
         val useFrequency = getUseFrequency(unit, unique, 80f)
+        if (unit.civ.isHuman()) {
+            val operations = com.unciv.logic.civilization.PlayerVictoryOperations(unit.civ)
+            val option = operations.spaceshipPart(unit) ?: return emptySequence()
+            return sequenceOf(UnitAction(UnitActionType.AddInCapital, useFrequency, option.title,
+                action = { operations.tryAddSpaceshipPart(unit); Unit }.takeIf { option.available }))
+        }
         return sequenceOf(UnitAction(UnitActionType.AddInCapital,
             title = "Add to [${unique.params[0]}]",
             useFrequency = useFrequency,

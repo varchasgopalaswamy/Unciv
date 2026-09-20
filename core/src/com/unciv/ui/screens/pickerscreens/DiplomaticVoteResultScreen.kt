@@ -1,8 +1,8 @@
 package com.unciv.ui.screens.pickerscreens
 
 import com.badlogic.gdx.utils.Align
-import com.unciv.logic.civilization.CivFlags
 import com.unciv.logic.civilization.Civilization
+import com.unciv.logic.civilization.PlayerVictoryOperations
 import com.unciv.models.UncivSound
 import com.unciv.models.translations.tr
 import com.unciv.ui.components.extensions.enable
@@ -38,8 +38,7 @@ class DiplomaticVoteResultScreen(
         descriptionLabel.setText(winnerText.tr())
 
         rightSideButton.onActivation(UncivSound.Click) {
-            viewingCiv.addFlag(CivFlags.ShowDiplomaticVotingResults.name, -1)
-            game.popScreen()
+            if (PlayerVictoryOperations(viewingCiv).tryAcknowledgeResults()) game.popScreen()
         }
         rightSideButton.keyShortcuts.add(KeyCharAndCode.BACK)
         rightSideButton.keyShortcuts.add(KeyCharAndCode.SPACE)

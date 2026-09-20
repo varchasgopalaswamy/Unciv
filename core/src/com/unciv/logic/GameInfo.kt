@@ -219,6 +219,7 @@ class GameInfo : IsPartOfGameInfoSerialization, HasGameInfoSerializationVersion 
         toReturn.gameParameters = gameParameters
         toReturn.gameId = gameId
         toReturn.diplomaticVictoryVotesCast.putAll(diplomaticVictoryVotesCast)
+        toReturn.diplomaticVictoryVotesProcessed = diplomaticVictoryVotesProcessed
         toReturn.oneMoreTurnMode = oneMoreTurnMode
         toReturn.customSaveLocation = customSaveLocation
         toReturn.victoryData = victoryData?.copy()

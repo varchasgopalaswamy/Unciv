@@ -87,18 +87,21 @@ class VictoryManager : IsPartOfGameInfoSerialization {
         return (results.none { it != bestCiv && it.value == bestCiv.value })
     }
 
-    data class DiplomaticVictoryVoteBreakdown(val results: Counter<String>, val winnerText: String)
+    data class DiplomaticVictoryVoteBreakdown(
+        val results: Counter<String>, val winnerText: String,
+        val minimumVotes: Int, val winnerId: String?,
+    )
     @Readonly
     fun getDiplomaticVictoryVoteBreakdown(): DiplomaticVictoryVoteBreakdown {
         val results = calculateDiplomaticVotingResults(civInfo.gameInfo.diplomaticVictoryVotesCast)
+        val minVotes = votesNeededForDiplomaticVictory()
         val (voteCount, winnerList) = results.asSequence()
             .groupBy({ it.value }, { it.key }).asSequence()
             .sortedByDescending { it.key }  // key is vote count here
             .firstOrNull()
-            ?: return DiplomaticVictoryVoteBreakdown(results, "No valid votes were cast.")
+            ?: return DiplomaticVictoryVoteBreakdown(results, "No valid votes were cast.", minVotes, null)
 
         val lines = arrayListOf<String>()
-        val minVotes = votesNeededForDiplomaticVictory()
         if (voteCount < minVotes)
             lines += "Minimum votes for electing a world leader: [$minVotes]"
         if (winnerList.size > 1)
@@ -109,7 +112,8 @@ class VictoryManager : IsPartOfGameInfoSerialization {
             winnerCiv == civInfo -> "You have been elected world leader!"
             else -> "${winnerCiv.nation.getLeaderDisplayName()} has been elected world leader!"
         }
-        return DiplomaticVictoryVoteBreakdown(results, lines.joinToString("\n") { "{$it}" })
+        return DiplomaticVictoryVoteBreakdown(results, lines.joinToString("\n") { "{$it}" }, minVotes,
+            winnerCiv.civID.takeIf { voteCount >= minVotes && winnerList.size == 1 })
     }
 
     @Readonly
