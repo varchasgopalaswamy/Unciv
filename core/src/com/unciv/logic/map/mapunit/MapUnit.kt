@@ -881,6 +881,11 @@ class MapUnit : IsPartOfGameInfoSerialization {
         if (!hasMovement()) return  // We've already done stuff this turn, and can't do any more stuff
         if (isEscorting() && !getOtherEscortUnit()!!.hasMovement()) return
 
+        if (civ.isHuman() && isMoving() && com.unciv.logic.civilization.PlayerUnitOperations(civ).supportsMovement(this)) {
+            com.unciv.logic.civilization.PlayerUnitOperations(civ).continueDestination(this)
+            return
+        }
+
         val enemyUnitsInWalkingDistance = movement.getDistanceToTiles().keys
                 .filter { it.militaryUnit != null && civ.isAtWarWith(it.militaryUnit!!.civ) }
         if (enemyUnitsInWalkingDistance.isNotEmpty()) {

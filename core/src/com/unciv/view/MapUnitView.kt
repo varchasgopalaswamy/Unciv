@@ -32,10 +32,13 @@ class MapUnitView internal constructor(
     /** `true` if [unit] was removed from its tile (captured, killed) since being selected. */
     @Readonly fun hasDisappeared(): Boolean = unit !in unit.getTile().getUnits()
 
+    @Readonly fun supportsDestinationOrders(): Boolean = PlayerUnitOperations(viewer, spectatorMode).supportsMovement(unit)
+    @Readonly fun getMovementRoute(tileView: TileView): PlayerUnitOperations.RoutePreview? =
+        PlayerUnitOperations(viewer, spectatorMode).route(unit, tileView.unwrap())
     @Readonly fun canReach(tileView: TileView): Boolean =
-        getCurrentTurnMove(tileView) != null || unit.movement.canReach(tileView.unwrap())
+        if (supportsDestinationOrders()) getMovementRoute(tileView) != null else unit.movement.canReach(tileView.unwrap())
     @Readonly fun getShortestPath(tileView: TileView): List<TileView> =
-        if (getCurrentTurnMove(tileView) != null) listOf(tileView)
+        if (supportsDestinationOrders()) getMovementRoute(tileView)?.turns?.map { gameView.tileMapView.getTile(it.destination) } ?: emptyList()
         else unit.movement.getShortestPath(tileView.unwrap()).map { gameView.tileMapView.getTile(it) }
 
     @Readonly
@@ -81,6 +84,8 @@ class MapUnitView internal constructor(
     // Actions
     fun tryMoveThisTurn(tileView: TileView): Boolean =
         PlayerUnitOperations(viewer, spectatorMode).tryMove(unit, tileView.unwrap())
+    fun trySetDestination(tileView: TileView): Boolean =
+        PlayerUnitOperations(viewer, spectatorMode).trySetDestination(unit, tileView.unwrap())
 
     fun trySwapMoveToTile(tileView: TileView, keepEscorting: Boolean = false): Boolean {
         unit.movement.swapMoveToTile(tileView.unwrap(), keepEscorting)
@@ -93,8 +98,7 @@ class MapUnitView internal constructor(
     fun tryHeadTowards(tileView: TileView): Boolean {
         val operations = PlayerUnitOperations(viewer, spectatorMode)
         if (!PlayerOperations(viewer, spectatorMode).canAct() || !operations.owns(unit)) return false
-        if (getCurrentTurnMove(tileView) != null)
-            return operations.tryMove(unit, tileView.unwrap())
+        if (supportsDestinationOrders()) return operations.trySetDestination(unit, tileView.unwrap())
         unit.movement.headTowards(tileView.unwrap())
         return true
     }

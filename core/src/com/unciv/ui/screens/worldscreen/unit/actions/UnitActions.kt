@@ -138,7 +138,10 @@ object UnitActions {
         // General actions
         addAutomateActions(unit)
         if (unit.isMoving())
-            yield(UnitAction(UnitActionType.StopMovement, 20f) { unit.action = null })
+            yield(UnitAction(UnitActionType.StopMovement, 20f) {
+                if (unit.civ.isHuman()) com.unciv.logic.civilization.PlayerUnitOperations(unit.civ).tryCancelMovement(unit)
+                else unit.action = null
+            })
         if (unit.isExploring())
             yield(UnitAction(UnitActionType.StopExploration, 20f) { unit.action = null })
         if (unit.isAutomated())

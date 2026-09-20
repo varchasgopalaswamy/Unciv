@@ -155,31 +155,31 @@ class UnitMovement(val unit: MapUnit) {
      * Returns an empty list if there's no way to get to the destination.
      */
     @Readonly
-    fun getShortestPath(destination: Tile, avoidDamagingTerrain: Boolean = false): List<Tile> = timeThis<List<Tile>>("getShortestPath")  {
+    fun getShortestPath(destination: Tile, avoidDamagingTerrain: Boolean = false, forPlanning: Boolean = false): List<Tile> = timeThis<List<Tile>>("getShortestPath")  {
         if (unit.cache.cannotMove) return listOf()
-        if (UncivGame.Current.settings.useAStarPathfinding)
+        if (!forPlanning && UncivGame.Current.settings.useAStarPathfinding)
             return aStarPathing.getShortestPath(destination) ?: listOf()
 
         // First try and find a path without damaging terrain
         if (!avoidDamagingTerrain && unit.civ.passThroughImpassableUnlocked && unit.baseUnit.isLandUnit) {
-            val damageFreePath = getShortestPath(destination, true)
+            val damageFreePath = getShortestPath(destination, true, forPlanning)
             if (damageFreePath.isNotEmpty()) return damageFreePath
         }
 
-        if (destination.neighbors.none { isUnknownTileWeShouldAssumeToBePassable(it) || canPassThrough(it) }) {
+        if (destination.neighbors.none { isUnknownTileWeShouldAssumeToBePassable(it) || canPassThrough(it, forPlanning = forPlanning) }) {
             // edge case where this all of the tiles around the destination are
             // explored and known the unit can't pass through any of thoes tiles so we know a priori that no path exists
-            pathfindingCache.setShortestPathCache(destination, listOf())
+            if (!forPlanning) pathfindingCache.setShortestPathCache(destination, listOf())
             return listOf()
         }
-        val cachedPath = pathfindingCache.getShortestPathCache(destination)
+        val cachedPath = if (forPlanning) emptyList() else pathfindingCache.getShortestPathCache(destination)
         if (cachedPath.isNotEmpty())
             return cachedPath
 
         val currentTile = unit.getTile()
         if (currentTile.position == destination.position) {
             // edge case that's needed, so that workers will know that they can reach their own tile. *sigh*
-            pathfindingCache.setShortestPathCache(destination, listOf(currentTile))
+            if (!forPlanning) pathfindingCache.setShortestPathCache(destination, listOf(currentTile))
             return listOf(currentTile)
         }
 
@@ -200,20 +200,21 @@ class UnitMovement(val unit: MapUnit) {
 
         while (true) {
             newTilesToCheck.clear()
-            fun isUnfriendlyCityState(tile:Tile): Boolean = tile.getOwner().let { it != null && it.isCityState
+            fun isUnfriendlyCityState(tile:Tile): Boolean = (!forPlanning || tile.isExplored(civilization)) && tile.getOwner().let { it != null && it.isCityState
                     && it.getDiplomacyManager(unit.civ)?.isRelationshipLevelLT(RelationshipLevel.Friend) == true }
 
             // When comparing booleans, we get false first, so we need to negate the isLand / isCityState checks
             // By order of preference: 1. Land tiles 2. Aerial distance 3. Not city states
             val comparison: Comparator<Tile> = if (unit.type.isLandUnit())
-                compareBy({!it.isLand}, {it.aerialDistanceTo(destination)}, ::isUnfriendlyCityState)
+                compareBy({ if (forPlanning && !it.isExplored(civilization)) false else !it.isLand }, {it.aerialDistanceTo(destination)}, ::isUnfriendlyCityState)
             else compareBy({it.aerialDistanceTo(destination)}, ::isUnfriendlyCityState)
 
             val tilesByPreference = tilesToCheck.sortedWith(comparison)
 
             for (tileToCheck in tilesByPreference) {
                 val distanceToTilesThisTurn = if (distance == 1) {
-                    getDistanceToTiles(true, passThroughCacheNew, movementCostCache) // check cache
+                    if (forPlanning) getMovementToTilesAtPosition(currentTile.position, unit.currentMovement, forPlanning = true)
+                    else getDistanceToTiles(true, passThroughCacheNew, movementCostCache) // check cache
                 }
                 else {
                     getMovementToTilesAtPosition(
@@ -222,15 +223,16 @@ class UnitMovement(val unit: MapUnit) {
                         false,
                         visitedTilesBitset,
                         passThroughCacheNew,
-                        movementCostCache
+                        movementCostCache,
+                        forPlanning = forPlanning
                     )
                 }
                 for (reachableTile in distanceToTilesThisTurn.keys) {
                     // Avoid damaging terrain on first pass
-                    if (avoidDamagingTerrain && unit.getDamageFromTerrain(reachableTile) > 0)
+                    if (avoidDamagingTerrain && (!forPlanning || reachableTile.isExplored(civilization)) && unit.getDamageFromTerrain(reachableTile) > 0)
                         continue
                     // Avoid Enemy Territory if Civilian and Automated. For multi-turn pathing
-                    if (unit.isCivilian() && unit.isAutomated() && reachableTile.isEnemyTerritory(civilization))
+                    if (unit.isCivilian() && unit.isAutomated() && (!forPlanning || reachableTile.isExplored(civilization)) && reachableTile.isEnemyTerritory(civilization))
                         continue
                     if (reachableTile == destination) {
                         val path = mutableListOf(destination)
@@ -241,14 +243,14 @@ class UnitMovement(val unit: MapUnit) {
                             intermediateTile = movementTreeParents[intermediateTile]!!
                         }
                         path.reverse() // and reverse in order to get the list in chronological order
-                        pathfindingCache.setShortestPathCache(destination, path)
+                        if (!forPlanning) pathfindingCache.setShortestPathCache(destination, path)
 
                         return path
                     }
 
                     if (movementTreeParents.containsKey(reachableTile)) continue // We cannot be faster than anything existing...
                     if (!isUnknownTileWeShouldAssumeToBePassable(reachableTile) &&
-                        !canMoveToCache.getOrPut(reachableTile) { canMoveTo(reachableTile) })
+                        !canMoveToCache.getOrPut(reachableTile) { canMoveTo(reachableTile, forPlanning = forPlanning) })
                     // This is a tile that we can't actually enter - either an intermediary tile containing our unit, or an enemy unit/city
                         continue
                     movementTreeParents[reachableTile] = tileToCheck
@@ -258,7 +260,7 @@ class UnitMovement(val unit: MapUnit) {
 
             if (newTilesToCheck.isEmpty()) {
                 // there is NO PATH (eg blocked by enemy units)
-                pathfindingCache.setShortestPathCache(destination, emptyList())
+                if (!forPlanning) pathfindingCache.setShortestPathCache(destination, emptyList())
                 return emptyList()
             }
 
