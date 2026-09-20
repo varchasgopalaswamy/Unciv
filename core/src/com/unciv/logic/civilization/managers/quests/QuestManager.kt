@@ -467,6 +467,19 @@ class QuestManager : IsPartOfGameInfoSerialization {
         }
     }
 
+    data class GlobalQuestStanding(val yourScore: Int, val leaderScore: Int, val leaders: List<String>)
+
+    /** Detached contest standings; callers decide which competing identities they may display. */
+    @Readonly
+    fun getGlobalQuestStanding(quest: AssignedQuest): GlobalQuestStanding? {
+        if (quest.assignerCiv != civ || !quest.isGlobal() || quest !in assignedQuests ||
+            quest.questNameInstance !in setOf(QuestName.ContestCulture, QuestName.ContestFaith, QuestName.ContestTech)) return null
+        val evaluation = WinnersAndLosers(quest.questNameInstance)
+        if (evaluation.winners.isEmpty()) return null
+        return GlobalQuestStanding(getScoreForQuest(quest), evaluation.maxScore,
+            java.util.Collections.unmodifiableList(evaluation.winners.map { it.assigneeCiv.civID }))
+    }
+
     /** Returns a string to show "competition" status:
      *  - Show leading civ(s) (more than one only if tied for first place) with best score.
      *  - The assignee civ of the given [inquiringAssignedQuest] is shown for comparison if it is not among the leaders.
@@ -488,18 +501,15 @@ class QuestManager : IsPartOfGameInfoSerialization {
         }
 
         // Get list of leaders with leading score (the losers aren't used here)
-        val evaluation = WinnersAndLosers(inquiringAssignedQuest.questNameInstance)
-        if (evaluation.winners.isEmpty())   //Only show leaders if there are some
-            return ""
-
-        val listOfLeadersAsTranslatedString = evaluation.winners.joinToString(separator = ", ") { it.assigneeCiv.civName.tr() }
+        val standing = getGlobalQuestStanding(inquiringAssignedQuest) ?: return ""
+        val listOfLeadersAsTranslatedString = standing.leaders.joinToString(separator = ", ") { civ.gameInfo.getCivilization(it).civName.tr() }
         @Pure fun getScoreString(name: String, score: Int) = "[$name] with [$score] [$scoreDescriptor]".tr()
-        val leadersString = getScoreString(listOfLeadersAsTranslatedString, evaluation.maxScore)
+        val leadersString = getScoreString(listOfLeadersAsTranslatedString, standing.leaderScore)
 
-        if (inquiringAssignedQuest in evaluation.winners)
+        if (inquiringAssignedQuest.assignee in standing.leaders)
             return "Current leader(s): [$leadersString]"
 
-        val yourScoreString = getScoreString(inquiringAssignedQuest.assignee, getScoreForQuest(inquiringAssignedQuest))
+        val yourScoreString = getScoreString(inquiringAssignedQuest.assignee, standing.yourScore)
         return "Current leader(s): [$leadersString], you: [$yourScoreString]"
     }
 

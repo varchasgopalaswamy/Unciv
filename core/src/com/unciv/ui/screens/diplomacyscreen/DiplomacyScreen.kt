@@ -332,8 +332,7 @@ class DiplomacyScreen(
                 if (otherCiv.isMajorCiv()) {
                     if (!operations.tryDeclareWar(otherCiv)) return@ConfirmPopup
                 } else {
-                    if (!diplomacyManager.canDeclareWar()) return@ConfirmPopup
-                    diplomacyManager.declareWar()
+                    if (!com.unciv.logic.civilization.PlayerCityStateOperations(viewingCiv).tryAct(otherCiv, "declareWar")) return@ConfirmPopup
                 }
                 operations.declarationResponse(otherCiv)?.let { response ->
                     setRightSideFlavorText(otherCiv, response.paragraphs.joinToString("\n"), response.acknowledgement)
@@ -344,7 +343,8 @@ class DiplomacyScreen(
                 music.playVoice("${otherCiv.civName}.attacked")
             }.open()
         }
-        if (isNotPlayersTurn() || otherCiv.isMajorCiv() && operations.options(otherCiv)?.declareWar?.available != true)
+        if (isNotPlayersTurn() || (if (otherCiv.isMajorCiv()) operations.options(otherCiv)?.declareWar?.available != true
+            else com.unciv.logic.civilization.PlayerCityStateOperations(viewingCiv).options(otherCiv).none { it.name == "declareWar" && it.available }))
             declareWarButton.disable()
         return declareWarButton
     }

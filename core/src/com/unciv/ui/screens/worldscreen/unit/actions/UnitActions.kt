@@ -333,15 +333,12 @@ object UnitActions {
         if (recipient == null || recipient.isCurrentPlayer()) return@sequence
 
         if (recipient.isCityState) {
-            if (recipient.isAtWarWith(unit.civ)) return@sequence // No gifts to enemy CS
-            // City States only take military units (and units specifically allowed by uniques)
-            if (!unit.isMilitary()
-                && unit.getMatchingUniques(
-                    UniqueType.GainInfluenceWithUnitGiftToCityState,
-                    checkCivInfoUniques = true
-                )
-                    .none { unit.matchesFilter(it.params[1]) }
-            ) return@sequence
+            val operations = com.unciv.logic.civilization.PlayerCityStateOperations(unit.civ)
+            val option = operations.giftOption(unit) ?: return@sequence
+            yield(UnitAction(UnitActionType.GiftUnit, 5f, action = {
+                if (operations.tryGiftUnit(unit)) GUI.setUpdateWorldOnNextRender()
+            }.takeIf { option.available }))
+            return@sequence
         }
         // If gifting to major civ they need to be friendly
         else if (!tile.isFriendlyTerritory(unit.civ)) return@sequence
@@ -355,26 +352,8 @@ object UnitActions {
         }
 
         val giftAction = {
-            if (recipient.isCityState) {
-                for (unique in unit.getMatchingUniques(
-                    UniqueType.GainInfluenceWithUnitGiftToCityState,
-                    checkCivInfoUniques = true
-                )) {
-                    if (unit.matchesFilter(unique.params[1])) {
-                        recipient.getDiplomacyManager(unit.civ)!!
-                            .addInfluence(unique.params[0].toFloat() - 5f)
-                        break
-                    }
-                }
-
-                recipient.getDiplomacyManager(unit.civ)!!.addInfluence(5f)
-            } else recipient.getDiplomacyManager(unit.civ)!!
-                .addModifier(DiplomaticModifiers.GaveUsUnits, 5f)
-
-            if (recipient.isCityState && unit.isGreatPerson())
-                unit.destroy()  // City states don't get GPs
-            else
-                unit.gift(recipient)
+            recipient.getDiplomacyManager(unit.civ)!!.addModifier(DiplomaticModifiers.GaveUsUnits, 5f)
+            unit.gift(recipient)
             GUI.setUpdateWorldOnNextRender()
         }
         yield(UnitAction(UnitActionType.GiftUnit, 5f, action = giftAction))

@@ -10,6 +10,8 @@ import com.unciv.testing.BaseTestRunner
 import com.unciv.testing.TestGame
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -46,6 +48,35 @@ class QuestTests {
         manager.setTransients(cityState)
     }
     private fun assignedquests() = manager.getAssignedQuestsFor(civ).toList()
+
+    @Test
+    fun `contest standings share desktop scores and return detached leaders`() {
+        val rival = testGame.addCiv()
+        loadManager("""{"assignedQuests":[
+            {"questName":"Contest Culture","assigner":"${cityState.civID}","assignee":"${civ.civID}","data1":"10"},
+            {"questName":"Contest Culture","assigner":"${cityState.civID}","assignee":"${rival.civID}","data1":"15"}
+        ]}""")
+        civ.totalCultureForContests = 20
+        rival.totalCultureForContests = 25
+        val quest = assignedquests().single()
+        val before = json().toJson(manager)
+        val tied = manager.getGlobalQuestStanding(quest)!!
+        assertEquals(10, tied.yourScore)
+        assertEquals(10, tied.leaderScore)
+        assertEquals(setOf(civ.civID, rival.civID), tied.leaders.toSet())
+        assertThrows(UnsupportedOperationException::class.java) { (tied.leaders as MutableList).clear() }
+        assertEquals(before, json().toJson(manager))
+        rival.totalCultureForContests++
+        val leading = manager.getGlobalQuestStanding(quest)!!
+        assertEquals(11, leading.leaderScore)
+        assertEquals(listOf(rival.civID), leading.leaders)
+        assertEquals(2, tied.leaders.size)
+        val desktop = manager.getScoreStringForGlobalQuest(quest)
+        assertTrue(desktop.contains(rival.civName) && desktop.contains("11") && desktop.contains("10"))
+        loadManager()
+        assertNull(manager.getGlobalQuestStanding(assignedquests().first()))
+        assertNull(manager.getGlobalQuestStanding(quest))
+    }
 
     private fun setupBarbarianCamp(): Pair<Tile, Float> {
         val campTile = testGame.getTile(0, 0)

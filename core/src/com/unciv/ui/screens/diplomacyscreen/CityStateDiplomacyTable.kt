@@ -7,14 +7,10 @@ import com.badlogic.gdx.scenes.scene2d.ui.TextButton
 import com.badlogic.gdx.utils.Align
 import com.unciv.Constants
 import com.unciv.UncivGame
-import com.unciv.logic.civilization.AlertType
 import com.unciv.logic.civilization.Civilization
-import com.unciv.logic.civilization.PopupAlert
+import com.unciv.logic.civilization.PlayerCityStateOperations
 import com.unciv.logic.civilization.diplomacy.*
 import com.unciv.logic.civilization.managers.quests.AssignedQuest
-import com.unciv.logic.trade.TradeLogic
-import com.unciv.logic.trade.TradeOffer
-import com.unciv.logic.trade.TradeOfferType
 import com.unciv.models.ruleset.Quest
 import com.unciv.models.ruleset.tile.ResourceType
 import com.unciv.models.ruleset.unique.GameContext
@@ -33,6 +29,9 @@ import com.unciv.ui.popups.ConfirmPopup
 
 class CityStateDiplomacyTable(private val diplomacyScreen: DiplomacyScreen) {
     val viewingCiv = diplomacyScreen.viewingCiv
+    private val operations = PlayerCityStateOperations(viewingCiv)
+
+    private fun offered(other: Civilization, name: String) = operations.options(other).singleOrNull { it.name == name }
 
     fun getCityStateDiplomacyTable(otherCiv: Civilization): Table {
         val otherCivDiplomacyManager = otherCiv.getDiplomacyManager(viewingCiv)!!
@@ -49,7 +48,7 @@ class CityStateDiplomacyTable(private val diplomacyScreen: DiplomacyScreen) {
         diplomacyTable.add(giveGiftButton).row()
         if (diplomacyScreen.isNotPlayersTurn() || viewingCiv.isAtWarWith(otherCiv)) giveGiftButton.disable()
 
-        val improveTileButton = getImproveTilesButton(otherCiv, otherCivDiplomacyManager)
+        val improveTileButton = getImproveTilesButton(otherCiv)
         if (improveTileButton != null) diplomacyTable.add(improveTileButton).row()
 
         if (otherCivDiplomacyManager.diplomaticStatus != DiplomaticStatus.Protector)
@@ -213,12 +212,12 @@ class CityStateDiplomacyTable(private val diplomacyScreen: DiplomacyScreen) {
         val revokeProtectionButton = "Revoke Protection".toTextButton()
         revokeProtectionButton.onClick {
             ConfirmPopup(diplomacyScreen, "Revoke protection for [${otherCiv.civName}]?", "Revoke Protection") {
-                otherCiv.cityStateFunctions.removeProtectorCiv(viewingCiv)
+                operations.tryAct(otherCiv, "revokeProtection")
                 diplomacyScreen.updateLeftSideTable(otherCiv)
                 diplomacyScreen.updateRightSide(otherCiv)
             }.open()
         }
-        if (diplomacyScreen.isNotPlayersTurn() || !otherCiv.cityStateFunctions.otherCivCanWithdrawProtection(viewingCiv))
+        if (diplomacyScreen.isNotPlayersTurn() || offered(otherCiv, "revokeProtection")?.available != true)
             revokeProtectionButton.disable()
         return revokeProtectionButton
     }
@@ -232,12 +231,12 @@ class CityStateDiplomacyTable(private val diplomacyScreen: DiplomacyScreen) {
                 "Pledge to protect",
                 true
             ) {
-                otherCiv.cityStateFunctions.addProtectorCiv(viewingCiv)
+                operations.tryAct(otherCiv, "pledgeProtection")
                 diplomacyScreen.updateLeftSideTable(otherCiv)
                 diplomacyScreen.updateRightSide(otherCiv)
             }.open()
         }
-        if (diplomacyScreen.isNotPlayersTurn() || !otherCiv.cityStateFunctions.otherCivCanPledgeProtection(viewingCiv))
+        if (diplomacyScreen.isNotPlayersTurn() || offered(otherCiv, "pledgeProtection")?.available != true)
             protectionButton.disable()
         return protectionButton
     }
@@ -254,22 +253,12 @@ class CityStateDiplomacyTable(private val diplomacyScreen: DiplomacyScreen) {
                 "Negotiate Peace",
                 true
             ) {
-                val tradeLogic = TradeLogic(viewingCiv, otherCiv)
-                tradeLogic.currentTrade.ourOffers.add(
-                    TradeOffer(Constants.peaceTreaty, TradeOfferType.Treaty, speed = viewingCiv.gameInfo.speed)
-                )
-                tradeLogic.currentTrade.theirOffers.add(
-                    TradeOffer(Constants.peaceTreaty, TradeOfferType.Treaty, speed = viewingCiv.gameInfo.speed)
-                )
-                tradeLogic.acceptTrade()
+                if (!operations.tryAct(otherCiv, "makePeace")) return@ConfirmPopup
                 diplomacyScreen.updateLeftSideTable(otherCiv)
                 diplomacyScreen.updateRightSide(otherCiv)
             }.open()
         }
-        val cityStatesAlly = otherCiv.allyCiv
-        val atWarWithItsAlly = viewingCiv.getKnownCivs()
-            .any { it == cityStatesAlly && it.isAtWarWith(viewingCiv) }
-        if (diplomacyScreen.isNotPlayersTurn() || atWarWithItsAlly) peaceButton.disable()
+        if (diplomacyScreen.isNotPlayersTurn() || offered(otherCiv, "makePeace")?.available != true) peaceButton.disable()
 
         if (otherCivDiplomacyManager.hasFlag(DiplomacyFlags.DeclaredWar)) {
             peaceButton.disable() // Can't trade for 10 turns after war was declared
@@ -280,25 +269,9 @@ class CityStateDiplomacyTable(private val diplomacyScreen: DiplomacyScreen) {
         return peaceButton
     }
 
-    private fun getImproveTilesButton(
-        otherCiv: Civilization,
-        otherCivDiplomacyManager: DiplomacyManager
-    ): TextButton? {
-        if (otherCiv.cities.isEmpty()) return null
-        val improvableResourceTiles = getImprovableResourceTiles(otherCiv)
-        val improvements =
-            otherCiv.gameInfo.ruleset.tileImprovements.filter { it.value.turnsToBuild != -1 }
-        var needsImprovements = false
-
-        for (improvableTile in improvableResourceTiles)
-            for (tileImprovement in improvements.values)
-                if (improvableTile.tileResource!!.isImprovedBy(tileImprovement.name)
-                    && improvableTile.improvementFunctions.canBuildImprovement(tileImprovement, otherCiv.state)
-                )
-                    needsImprovements = true
-
-        if (!needsImprovements) return null
-
+    private fun getImproveTilesButton(otherCiv: Civilization): TextButton? {
+        val choices = operations.options(otherCiv).filter { it.kind == PlayerCityStateOperations.Kind.GiftImprovement }
+        if (choices.isEmpty()) return null
 
         val improveTileButton = "Gift Improvement".toTextButton()
         improveTileButton.onClick {
@@ -307,7 +280,7 @@ class CityStateDiplomacyTable(private val diplomacyScreen: DiplomacyScreen) {
         }
 
 
-        if (diplomacyScreen.isNotPlayersTurn() || otherCivDiplomacyManager.getInfluence() < 60)
+        if (diplomacyScreen.isNotPlayersTurn() || choices.none { it.available })
             improveTileButton.disable()
         return improveTileButton
     }
@@ -319,13 +292,10 @@ class CityStateDiplomacyTable(private val diplomacyScreen: DiplomacyScreen) {
         val diplomaticMarriageButton =
             "Diplomatic Marriage ([${otherCiv.cityStateFunctions.getDiplomaticMarriageCost()}] Gold)".toTextButton()
         diplomaticMarriageButton.onClick {
-            val newCities = otherCiv.cities
-            otherCiv.cityStateFunctions.diplomaticMarriage(viewingCiv)
-            UncivGame.Current.popScreen() // The other civ will no longer exist
-            for (city in newCities)
-                viewingCiv.popupAlerts.add(PopupAlert(AlertType.DiplomaticMarriage, city.id))   // Player gets to choose between annex and puppet
+            if (operations.tryAct(otherCiv, "diplomaticMarriage"))
+                UncivGame.Current.popScreen() // The other civ will no longer exist
         }
-        if (diplomacyScreen.isNotPlayersTurn() || !otherCiv.cityStateFunctions.canBeMarriedBy(viewingCiv))
+        if (diplomacyScreen.isNotPlayersTurn() || offered(otherCiv, "diplomaticMarriage")?.available != true)
             diplomaticMarriageButton.disable()
         return diplomaticMarriageButton
     }
@@ -339,12 +309,12 @@ class CityStateDiplomacyTable(private val diplomacyScreen: DiplomacyScreen) {
             val giftButton =
                 "Gift [$giftAmount] gold (+[$influenceAmount] influence)".toTextButton()
             giftButton.onClick {
-                otherCiv.cityStateFunctions.receiveGoldGift(viewingCiv, giftAmount)
+                operations.tryAct(otherCiv, "giftGold$giftAmount")
                 diplomacyScreen.updateLeftSideTable(otherCiv)
                 diplomacyScreen.updateRightSide(otherCiv)
             }
             diplomacyTable.add(giftButton).row()
-            if (viewingCiv.gold < giftAmount || diplomacyScreen.isNotPlayersTurn()) giftButton.disable()
+            if (offered(otherCiv, "giftGold$giftAmount")?.available != true || diplomacyScreen.isNotPlayersTurn()) giftButton.disable()
         }
 
         val backButton = "Back".toTextButton()
@@ -356,41 +326,19 @@ class CityStateDiplomacyTable(private val diplomacyScreen: DiplomacyScreen) {
         return diplomacyTable
     }
 
-    private fun getImprovableResourceTiles(otherCiv:Civilization) = otherCiv.cities.flatMap { it.getTiles() }.filter {
-        val resource = it.tileResource
-        otherCiv.canSeeResource(resource) &&
-            resource.resourceType != ResourceType.Bonus &&
-            (it.improvement == null || !resource.isImprovedBy(it.improvement!!))
-    }
-
     private fun getImprovementGiftTable(otherCiv: Civilization): Table {
         val improvementGiftTable = getCityStateDiplomacyTableHeader(otherCiv)
         improvementGiftTable.addSeparator()
 
-        val improvableResourceTiles = getImprovableResourceTiles(otherCiv)
-        val tileImprovements =
-            otherCiv.gameInfo.ruleset.tileImprovements
-
-        for (improvableTile in improvableResourceTiles) {
-            for (tileImprovement in tileImprovements.values) {
-                if (improvableTile.tileResource!!.isImprovedBy(tileImprovement.name)
-                    && improvableTile.improvementFunctions.canBuildImprovement(tileImprovement, otherCiv.state)
-                ) {
-                    val improveTileButton =
-                        "Build [${tileImprovement}] on [${improvableTile.tileResource}] (200 Gold)".toTextButton()
-                    improveTileButton.onClick {
-                        viewingCiv.addGold(-200)
-                        improvableTile.stopWorkingOnImprovement()
-                        improvableTile.setImprovement(tileImprovement)
-                        otherCiv.cache.updateCivResources()
-                        diplomacyScreen.rightSideTable.clear()
-                        diplomacyScreen.rightSideTable.add(ScrollPane(getCityStateDiplomacyTable(otherCiv)))
-                    }
-                    if (viewingCiv.gold < 200)
-                        improveTileButton.disable()
-                    improvementGiftTable.add(improveTileButton).row()
-                }
+        for (option in operations.options(otherCiv).filter { it.kind == PlayerCityStateOperations.Kind.GiftImprovement }) {
+            val button = option.title.toTextButton()
+            button.onClick {
+                operations.tryAct(otherCiv, option.name)
+                diplomacyScreen.rightSideTable.clear()
+                diplomacyScreen.rightSideTable.add(ScrollPane(getCityStateDiplomacyTable(otherCiv)))
             }
+            if (diplomacyScreen.isNotPlayersTurn() || !option.available) button.disable()
+            improvementGiftTable.add(button).row()
         }
 
         val backButton = "Back".toTextButton()
@@ -422,21 +370,21 @@ class CityStateDiplomacyTable(private val diplomacyScreen: DiplomacyScreen) {
 
         val demandGoldButton = "Take [${otherCiv.cityStateFunctions.goldGainedByTribute()}] gold (-15 Influence)".toTextButton()
         demandGoldButton.onClick {
-            otherCiv.cityStateFunctions.tributeGold(viewingCiv)
+            operations.tryAct(otherCiv, "goldTribute")
             diplomacyScreen.rightSideTable.clear()
             diplomacyScreen.rightSideTable.add(ScrollPane(getCityStateDiplomacyTable(otherCiv)))
         }
         diplomacyTable.add(demandGoldButton).row()
-        if (otherCiv.cityStateFunctions.getTributeWillingness(viewingCiv, demandingWorker = false) < 0)   demandGoldButton.disable()
+        if (diplomacyScreen.isNotPlayersTurn() || offered(otherCiv, "goldTribute")?.available != true)   demandGoldButton.disable()
 
         val demandWorkerButton = "Take worker (-50 Influence)".toTextButton()
         demandWorkerButton.onClick {
-            otherCiv.cityStateFunctions.tributeWorker(viewingCiv)
+            operations.tryAct(otherCiv, "workerTribute")
             diplomacyScreen.rightSideTable.clear()
             diplomacyScreen.rightSideTable.add(ScrollPane(getCityStateDiplomacyTable(otherCiv)))
         }
         diplomacyTable.add(demandWorkerButton).row()
-        if (otherCiv.cityStateFunctions.getTributeWillingness(viewingCiv, demandingWorker = true) < 0)    demandWorkerButton.disable()
+        if (diplomacyScreen.isNotPlayersTurn() || offered(otherCiv, "workerTribute")?.available != true)    demandWorkerButton.disable()
 
         val backButton = "Back".toTextButton()
         backButton.onClick {
