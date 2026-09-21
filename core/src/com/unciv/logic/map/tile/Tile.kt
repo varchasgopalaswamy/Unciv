@@ -682,18 +682,26 @@ class Tile : IsPartOfGameInfoSerialization {
     }
 
     @Readonly
-    fun canBeSettled(civ: Civilization): Boolean {
+    fun canBeSettled(civ: Civilization): Boolean = settlementBlockers(civ).none()
+
+    /** Shares the exact site checks with [canBeSettled], without changing map state. */
+    @Readonly
+    fun settlementBlockers(civ: Civilization): Sequence<SettlementBlocker> = sequence {
         val modConstants = tileMap.gameInfo.ruleset.modOptions.constants
-        return when {
-            isWater || isImpassible() -> false
-            getTilesInDistance(modConstants.minimalCityDistanceOnDifferentContinents)
-                .any { it.isCityCenter() && it.getContinent() != getContinent() } -> false
-            getTilesInDistance(modConstants.minimalCityDistance)
-                .any { it.isCityCenter() && it.getContinent() == getContinent() } -> false
-            // cannot settle in someone else's territory
-            owningCity != null && owningCity!!.civ != civ -> false
-            else -> true
+        if (isWater) yield(SettlementBlocker(SettlementRejection.WATER))
+        if (isImpassible()) yield(SettlementBlocker(SettlementRejection.IMPASSABLE))
+        val radius = maxOf(modConstants.minimalCityDistance, modConstants.minimalCityDistanceOnDifferentContinents)
+        for (tile in getTilesInDistance(radius)) {
+            if (!tile.isCityCenter()) continue
+            val excludedDistance = if (tile.getContinent() == getContinent()) modConstants.minimalCityDistance
+                else modConstants.minimalCityDistanceOnDifferentContinents
+            val distance = aerialDistanceTo(tile)
+            if (distance <= excludedDistance)
+                yield(SettlementBlocker(SettlementRejection.CITY_TOO_CLOSE, tile.getCity(), distance, excludedDistance + 1))
         }
+        // Own territory is allowed; only another civilization's ownership blocks founding.
+        if (owningCity != null && owningCity!!.civ != civ)
+            yield(SettlementBlocker(SettlementRejection.FOREIGN_TERRITORY, owningCity))
     }
 
     /** The two tiles have a river between them */
