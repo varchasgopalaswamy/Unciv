@@ -39,21 +39,22 @@ object UnitActionsFromUniques {
      * @param tile The tile to found a city on.
      * @return null if impossible (the unit lacks the ability to found),
      * or else a [UnitAction] 'defining' the founding.
-     * The [action][UnitAction.action] field will be null if the action cannot be done here and now
-     * (no movement left, too close to another city).
+     * The [action][UnitAction.action] field will be null if the unit has no movement or the site
+     * is unavailable. Automation may inspect a destination before moving there; invoking the
+     * action revalidates both the unit's location and the settlement rules.
      */
     internal fun getFoundCityAction(unit: MapUnit, tile: Tile): UnitAction? {
         val unique = UnitSettlement.foundingUnique(unit, tile) ?: return null
         val useFrequency = getUseFrequency(unit, unique, 80f)
 
-        if (tile !== unit.currentTile || !UnitSettlement.canFoundCity(unit))
+        if (!UnitSettlement.canFoundCity(unit, tile))
             return UnitAction(UnitActionType.FoundCity, useFrequency, action = null)
 
         val hasActionModifiers = unique.modifiers.any { it.type?.targetTypes?.contains(
             UniqueTarget.UnitActionModifier
         ) == true }
         val foundAction = {
-            if (UnitSettlement.tryFoundCity(unit, confirmBreakPromise = true) != null) {
+            if (unit.currentTile === tile && UnitSettlement.tryFoundCity(unit, confirmBreakPromise = true) != null) {
                 if (unit.civ.playerType != PlayerType.AI)
                     UncivGame.Current.settings.addCompletedTutorialTask("Found city")
                 GUI.setUpdateWorldOnNextRender()

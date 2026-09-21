@@ -20,9 +20,13 @@ object UnitSettlement {
     }
 
     @Readonly
-    fun canFoundCity(unit: MapUnit): Boolean {
-        val unique = foundingUnique(unit) ?: return false
-        return !unit.isDestroyed && unit.hasMovement() && unit.currentTile.canBeSettled(unit.civ) &&
+    fun canFoundCity(unit: MapUnit): Boolean = canFoundCity(unit, unit.currentTile)
+
+    /** Checks a prospective city site before movement; founding still requires occupying that tile. */
+    @Readonly
+    fun canFoundCity(unit: MapUnit, tile: Tile): Boolean {
+        val unique = foundingUnique(unit, tile) ?: return false
+        return !unit.isDestroyed && unit.hasMovement() && tile.canBeSettled(unit.civ) &&
             UnitActionModifiers.canActivateSideEffects(unit, unique)
     }
 
