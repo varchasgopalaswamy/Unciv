@@ -28,7 +28,8 @@ data class DiplomaticDemandOption(val name: String, val text: String, val action
  * and revalidate both an owned popup's identity and its currently offered choice.
  */
 class PlayerDiplomaticCommunicationOperations(private val civ: Civilization, private val spectatorMode: Boolean = false) {
-    private fun visible(other: Civilization) = !spectatorMode && civ.isMajorCiv() && other.isMajorCiv() &&
+    private fun visible(other: Civilization, cityStateMessage: Boolean = false) =
+        !spectatorMode && civ.isMajorCiv() && (other.isMajorCiv() || cityStateMessage && other.isCityState) &&
         civ !== other && civ.gameInfo.civilizations.any { it === civ } &&
         civ.gameInfo.civilizations.any { it === other } && civ.knows(other) && other.knows(civ)
 
@@ -75,7 +76,9 @@ class PlayerDiplomaticCommunicationOperations(private val civ: Civilization, pri
             return@synchronized null
         val other = civ.gameInfo.civilizations.firstOrNull { it.civID == alert.value.substringBefore('@') }
             ?: return@synchronized null
-        if (!visible(other)) return@synchronized null
+        // City-states send border and stolen-tile notices, but cannot participate
+        // in the major-civilization demand and denunciation actions.
+        if (!visible(other, alert.type in cityStateAlerts)) return@synchronized null
         fun response(text: List<String>, options: List<DiplomaticResponseOption>, voice: String? = null) =
             DiplomaticMessageDecision(other.civID,
                 InformationalPopupContent(other.getLeaderDisplayName(), immutable(text), options.last().text),
@@ -174,6 +177,7 @@ class PlayerDiplomaticCommunicationOperations(private val civ: Civilization, pri
     }
 
     companion object {
+        private val cityStateAlerts = setOf(AlertType.BorderConflict, AlertType.TilesStolen)
         val incidentAlerts = setOf(AlertType.BulliedProtectedMinor, AlertType.AttackedProtectedMinor, AlertType.AttackedAllyMinor)
         val supportedAlerts = incidentAlerts + setOf(AlertType.Denounced, AlertType.AcceptingDemand, AlertType.RejectingDemand, AlertType.BorderConflict, AlertType.TilesStolen) +
             Demand.entries.flatMap { listOf(it.demandAlert, it.violationDiscoveredAlert) }

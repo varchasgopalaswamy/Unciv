@@ -38,6 +38,67 @@ class PlayerDiplomaticCommunicationOperationsTest {
     }
 
     @Test
+    fun `city state border notices offer native responses without changing the intrusion penalty`() {
+        val minor = testGame.addCiv(cityStateType = "Cultured")
+        val city = testGame.addCity(minor, testGame.getTile(0, 5))
+        rome.diplomacyFunctions.makeCivilizationsMeet(minor)
+        rome.popupAlerts.clear()
+        testGame.addUnit("Warrior", rome, city.getCenterTile().neighbors.first { it.getOwner() == minor })
+        val manager = minor.getDiplomacyManager(rome)!!
+        for (choice in listOf("Acknowledge", "Protest")) {
+            manager.removeFlag(DiplomacyFlags.BorderConflict)
+            val influence = manager.getInfluence()
+            minor.cityStateFunctions.updateDiplomaticRelationshipForCityState()
+            val alert = rome.popupAlerts.single { it.type == AlertType.BorderConflict }
+            assertEquals(influence - 10f, manager.getInfluence(), 0f)
+            val before = json().toJson(game)
+            val decision = operations.decision(alert)!!
+            assertEquals(minor.civID, decision.civilizationId)
+            assertEquals(listOf("Acknowledge", "Protest"), decision.options.map { it.name })
+            assertTrue(decision.options.all { it.available })
+            assertFalse(operations.tryRespond(alert, "DeclareWar"))
+            assertFalse(operations.tryRespond(PopupAlert(alert.type, alert.value), choice))
+            assertFalse(PlayerDiplomaticCommunicationOperations(rome, true).tryRespond(alert, choice))
+            assertEquals(before, json().toJson(game))
+            activate(greece)
+            assertFalse(operations.tryRespond(alert, choice))
+            activate(rome)
+            val diplomacy = json().toJson(minor.diplomacy)
+            val ourDiplomacy = json().toJson(rome.diplomacy)
+            assertTrue(operations.tryRespond(alert, choice))
+            assertFalse(rome.popupAlerts.contains(alert))
+            assertFalse(operations.tryRespond(alert, choice))
+            assertEquals(diplomacy, json().toJson(minor.diplomacy))
+            assertEquals(ourDiplomacy, json().toJson(rome.diplomacy))
+        }
+    }
+
+    @Test
+    fun `city state notices require contact and never enable major civilization actions`() {
+        val minor = testGame.addCiv(cityStateType = "Cultured")
+        testGame.addCity(minor, testGame.getTile(0, 5))
+        val alert = PopupAlert(AlertType.TilesStolen, minor.civID)
+        rome.popupAlerts.add(alert)
+        assertNull(operations.decision(alert))
+        assertFalse(operations.tryRespond(alert, "Acknowledge"))
+        rome.diplomacyFunctions.makeCivilizationsMeet(minor)
+        assertEquals(listOf("Acknowledge"), operations.decision(alert)!!.options.map { it.name })
+        assertNull(PlayerDiplomaticCommunicationOperations(rome, true).decision(alert))
+        assertNull(operations.denounceOption(minor))
+        assertFalse(operations.tryDenounce(minor))
+        assertTrue(operations.demands(minor).isEmpty())
+        assertFalse(operations.tryDemand(minor, Demand.DoNotSettleNearUs))
+        for (type in listOf(AlertType.Denounced, AlertType.DemandToStopSettlingCitiesNear)) {
+            val invalid = PopupAlert(type, minor.civID)
+            rome.popupAlerts.add(invalid)
+            assertNull(operations.decision(invalid))
+            assertFalse(operations.tryRespond(invalid, "Acknowledge"))
+        }
+        assertTrue(operations.tryRespond(alert, "Acknowledge"))
+        assertFalse(rome.popupAlerts.contains(alert))
+    }
+
+    @Test
     fun `denouncement removes embassies and repeated or off turn actions do not mutate`() {
         rome.getDiplomacyManager(greece)!!.setModifier(DiplomaticModifiers.EstablishedEmbassy, 10f)
         greece.getDiplomacyManager(rome)!!.setModifier(DiplomaticModifiers.EstablishedEmbassy, 10f)
