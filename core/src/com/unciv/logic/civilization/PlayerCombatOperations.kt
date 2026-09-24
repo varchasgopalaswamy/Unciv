@@ -144,11 +144,12 @@ class PlayerCombatOperations(private val civ: Civilization, private val spectato
     @Readonly
     private fun preview(attacker: ICombatant, defender: ICombatant, origin: Tile,
                         path: List<Tile>, cost: Float): AttackPreview {
-        // These are the same estimates displayed by BattleTable, including the random range
-        // rather than the deterministic random value that will resolve this particular attack.
-        var minDamageToDefender = BattleDamage.calculateDamageToDefender(attacker, defender, origin, 0f)
-        var maxDamageToDefender = BattleDamage.calculateDamageToDefender(attacker, defender, origin, 1f)
-        if (attacker is MapUnitCombatant && defender is MapUnitCombatant) {
+        // Share the damage exchange with execution and BattleTable, while ranging over
+        // both rolls instead of revealing this attack's deterministic random values.
+        val damage = BattleDamage.damageRange(attacker, defender, origin)
+        var minDamageToDefender = damage.minDamageToDefender
+        var maxDamageToDefender = damage.maxDamageToDefender
+        if (attacker is MapUnitCombatant && defender is MapUnitCombatant && !defender.isCivilian() && !defender.isDefeated()) {
             for (unique in attacker.unit.getMatchingUniques(UniqueType.ExtraRangedAttack)) {
                 val strength = (attacker.unit.baseUnit.strength * unique.params[0].toFloat() / 100).toInt()
                 val extraAttack = Battle.FakeUnitForExtraRangedAttack(attacker, strength)
@@ -156,18 +157,14 @@ class PlayerCombatOperations(private val civ: Civilization, private val spectato
                 maxDamageToDefender += BattleDamage.calculateDamageToDefender(extraAttack, defender, origin, 1f)
             }
         }
-        val captureWithoutCombat = attacker.isMelee() &&
-            (defender.isCivilian() || defender is CityCombatant && defender.isDefeated())
-        fun shownDamage(damage: Int, combatant: ICombatant) =
-            if (captureWithoutCombat) 0 else damage.coerceIn(0, combatant.getHealth().coerceAtLeast(0))
+        val defenderDamageLimit = (defender.getHealth() - if (defender is CityCombatant) 1 else 0).coerceAtLeast(0)
         return AttackPreview(attacker, defender, origin, defender.getTile(), path, cost,
             BattleDamage.getAttackingStrength(attacker, defender, origin),
             BattleDamage.getDefendingStrength(attacker, defender, origin),
             BattleDamage.getAttackModifiers(attacker, defender, origin).toMap(),
             if (defender is MapUnitCombatant) BattleDamage.getDefenceModifiers(attacker, defender, origin).toMap()
             else emptyMap(),
-            shownDamage(BattleDamage.calculateDamageToAttacker(attacker, defender, origin, 0f), attacker),
-            shownDamage(BattleDamage.calculateDamageToAttacker(attacker, defender, origin, 1f), attacker),
-            shownDamage(minDamageToDefender, defender), shownDamage(maxDamageToDefender, defender))
+            damage.minDamageToAttacker, damage.maxDamageToAttacker,
+            minDamageToDefender.coerceIn(0, defenderDamageLimit), maxDamageToDefender.coerceIn(0, defenderDamageLimit))
     }
 }

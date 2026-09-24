@@ -289,11 +289,78 @@ object BattleDamage {
         Random(combatant.getCivInfo().gameInfo.turns
                 * combatant.getTile().position.toVector2().hashCode().toLong()).nextFloat()
 
+    /** Damage in one exchange, excluding interception, withdrawal and triggered effects. */
+    @Readonly
+    fun calculateDamage(
+        attacker: ICombatant,
+        defender: ICombatant,
+        tileToAttackFrom: Tile = attacker.getTile(),
+        attackerRandomness: Float = getRandomness(attacker),
+        defenderRandomness: Float = getRandomness(defender),
+    ): Battle.DamageDealt = resolveDamage(attacker, defender,
+        calculateDamageToAttacker(attacker, defender, tileToAttackFrom, attackerRandomness),
+        calculateDamageToDefender(attacker, defender, tileToAttackFrom, defenderRandomness))
+
+    /**
+     * Apply both damage rolls together. As in Civ V's CvUnitCombat::GenerateMeleeCombatInfo,
+     * mutually lethal unit combat leaves the less-damaged unit at 1 HP (ties favor the defender).
+     * Compare total damage, including existing wounds, BEFORE capping either roll to current HP.
+     * A melee attack reducing a city to its defeat threshold leaves the attacker at 1 HP.
+     * Unciv represents a defeated city with 1 HP rather than 0 HP.
+     */
+    @Readonly
+    fun resolveDamage(
+        attacker: ICombatant,
+        defender: ICombatant,
+        damageToAttacker: Int,
+        damageToDefender: Int,
+    ): Battle.DamageDealt {
+        if (!attacker.isCity() && attacker.isDefeated() || !defender.isCity() && defender.isDefeated()
+            || attacker.isMelee() && (defender.isCivilian() || defender.isDefeated())) return Battle.DamageDealt.None
+
+        val attackerHealth = attacker.getHealth()
+        val defenderHealth = defender.getHealth()
+        val defenderFloor = if (defender is CityCombatant) 1 else 0
+        var toAttacker = damageToAttacker.coerceIn(0, attackerHealth)
+        var toDefender = damageToDefender.coerceIn(0, defenderHealth - defenderFloor)
+        if (damageToAttacker >= attackerHealth && damageToDefender >= defenderHealth - defenderFloor
+            && (defender !is CityCombatant || attacker.isMelee())) {
+            val attackerTotalDamage = attacker.getMaxHealth() - attackerHealth + damageToAttacker
+            val defenderTotalDamage = defender.getMaxHealth() - defenderHealth + damageToDefender
+            if (defender is CityCombatant || attackerTotalDamage < defenderTotalDamage)
+                toAttacker = attackerHealth - 1
+            else
+                toDefender = defenderHealth - 1
+        }
+        return Battle.DamageDealt(toDefender, toAttacker)
+    }
+
+    /** Marginal bounds: the endpoints for the two combatants need not occur together. */
+    data class DamageRange(
+        val minDamageToAttacker: Int,
+        val maxDamageToAttacker: Int,
+        val minDamageToDefender: Int,
+        val maxDamageToDefender: Int,
+    )
+
+    /**
+     * Use opposite extremes of the two rolls, since outgoing damage can save a dying unit.
+     * Sampling only low/low and high/high would miss possible winners of a lethal exchange.
+     * Never consult the turn/location-derived random values when building a preview.
+     */
+    @Readonly
+    fun damageRange(attacker: ICombatant, defender: ICombatant, tileToAttackFrom: Tile): DamageRange {
+        val attackerFavored = calculateDamage(attacker, defender, tileToAttackFrom, 0f, 1f)
+        val defenderFavored = calculateDamage(attacker, defender, tileToAttackFrom, 1f, 0f)
+        return DamageRange(attackerFavored.defenderDealt, defenderFavored.defenderDealt,
+            defenderFavored.attackerDealt, attackerFavored.attackerDealt)
+    }
+
     @Readonly
     fun calculateDamageToAttacker(
         attacker: ICombatant,
         defender: ICombatant,
-        tileToAttackFrom: Tile = defender.getTile(),
+        tileToAttackFrom: Tile = attacker.getTile(),
         /** Between 0 and 1. */
         randomnessFactor: Float = getRandomness(attacker)
     ): Int {
@@ -308,7 +375,7 @@ object BattleDamage {
     fun calculateDamageToDefender(
         attacker: ICombatant,
         defender: ICombatant,
-        tileToAttackFrom: Tile = defender.getTile(),
+        tileToAttackFrom: Tile = attacker.getTile(),
         /** Between 0 and 1.  Defaults to turn and location-based random to avoid save scumming */
         randomnessFactor: Float = getRandomness(defender)
         ,

@@ -238,7 +238,7 @@ class PlayerCombatOperationsTest {
         defender.health = 1
         warrior.health = 5
         val preview = operations.attacks(warrior).first()
-        assertEquals(1, preview.minDamageToDefender)
+        assertEquals(0, preview.minDamageToDefender)
         assertEquals(1, preview.maxDamageToDefender)
         assertTrue(preview.minDamageToAttacker in 0..warrior.health)
         assertTrue(preview.maxDamageToAttacker in preview.minDamageToAttacker..warrior.health)
@@ -248,6 +248,64 @@ class PlayerCombatOperationsTest {
         assertEquals(0, capture.minDamageToDefender)
         assertEquals(0, capture.maxDamageToDefender)
         assertEquals(0, capture.maxDamageToAttacker)
+    }
+
+    @Test
+    fun `critically wounded warrior preview and receipt agree on surviving brute`() {
+        defender.destroy()
+        val barbarians = game.addBarbarianCiv()
+        val brute = game.addUnit("Brute", barbarians, game.getTile(1, 0))
+        warrior.health = 1
+        brute.health = 12
+        player.viewableTiles = game.tileMap.values.toSet()
+        val before = json().toJson(game.gameInfo)
+        val offer = operations.attacks(warrior).single { it.attackFrom === warrior.currentTile }
+        assertEquals(before, json().toJson(game.gameInfo))
+        assertTrue("Preview must allow a survivor",
+            offer.minDamageToAttacker < warrior.health || offer.minDamageToDefender < brute.health)
+
+        val result = operations.tryAttack(warrior, offer.target, offer.attackFrom)!!
+
+        assertTrue(result.attacked)
+        assertTrue(result.damageToAttacker in offer.minDamageToAttacker..offer.maxDamageToAttacker)
+        assertTrue(result.damageToDefender in offer.minDamageToDefender..offer.maxDamageToDefender)
+        assertTrue(warrior.isDestroyed xor brute.isDestroyed)
+        assertEquals(1, warrior.health + brute.health)
+        assertEquals(12 - brute.health, result.damageToDefender)
+        assertEquals(1 - warrior.health, result.damageToAttacker)
+    }
+
+    @Test
+    fun `damage preview never substitutes the actual turn based random roll`() {
+        warrior.health = 10
+        defender.health = 10
+        val expected = operations.attacks(warrior)
+        val actualDamages = HashSet<Pair<Int, Int>>()
+        for (turn in 0..15) {
+            game.gameInfo.turns = turn
+            assertEquals(expected, operations.attacks(warrior))
+            val damage = BattleDamage.calculateDamage(MapUnitCombatant(warrior), MapUnitCombatant(defender),
+                expected.first().attackFrom)
+            actualDamages.add(damage.attackerDealt to damage.defenderDealt)
+        }
+        assertTrue("Fixture should exercise different hidden rolls", actualDamages.size > 1)
+    }
+
+    @Test
+    fun `river penalty uses the same attack origin in preview and execution`() {
+        warrior.removeFromTile()
+        warrior.putInTile(game.getTile(1, 0))
+        warrior.currentTile.setConnectedByRiver(defender.currentTile, true)
+        val offer = operations.attacks(warrior).single { it.attackFrom === warrior.currentTile }
+        assertTrue(offer.attackerModifiers.containsKey("Across river"))
+        val damage = BattleDamage.calculateDamage(MapUnitCombatant(warrior), MapUnitCombatant(defender))
+
+        val result = operations.tryAttack(warrior, offer.target, offer.attackFrom)!!
+
+        assertEquals(damage.attackerDealt, result.damageToDefender)
+        assertEquals(damage.defenderDealt, result.damageToAttacker)
+        assertTrue(result.damageToAttacker in offer.minDamageToAttacker..offer.maxDamageToAttacker)
+        assertTrue(result.damageToDefender in offer.minDamageToDefender..offer.maxDamageToDefender)
     }
 
     @Test

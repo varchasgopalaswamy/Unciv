@@ -415,32 +415,18 @@ object Battle {
     internal fun takeDamage(attacker: ICombatant, defender: ICombatant, attackRecorder: AttackRecorder? = null): DamageDealt {
         val attackerContext = GameContext(attacker, defender, defender.getTile(), CombatAction.Attack)
         val defenderContext = GameContext(defender, attacker, defender.getTile(), CombatAction.Defend)
-        var potentialDamageToDefender = BattleDamage.calculateDamageToDefender(attacker, defender)
-        var potentialDamageToAttacker = BattleDamage.calculateDamageToAttacker(attacker, defender)
-        val rng = attackerContext.stateBasedRandom("Battle.takeDamage")
+        val damage = BattleDamage.calculateDamage(attacker, defender)
 
         val attackerHealthBefore = attacker.getHealth()
         val defenderHealthBefore = defender.getHealth()
 
         if (defender is MapUnitCombatant && defender.unit.isCivilian() && attacker.isMelee()) {
             BattleUnitCapture.captureCivilianUnit(attacker, defender, attackRecorder = attackRecorder)
-        } else if (attacker.isRanged() && !attacker.isAirUnit()) {  // Air Units are Ranged, but take damage as well
-            defender.takeDamage(potentialDamageToDefender, attackRecorder) // straight up
         } else {
-            //melee attack is complicated, because either side may defeat the other midway
-            //so...for each round, we randomize who gets the attack in. Seems to be a good way to work for now.
-
-            while (potentialDamageToDefender + potentialDamageToAttacker > 0) {
-                if (rng.nextInt(potentialDamageToDefender + potentialDamageToAttacker) < potentialDamageToDefender) {
-                    potentialDamageToDefender--
-                    defender.takeDamage(1, attackRecorder)
-                    if (defender.isDefeated()) break
-                } else {
-                    potentialDamageToAttacker--
-                    attacker.takeDamage(1, attackRecorder)
-                    if (attacker.isDefeated()) break
-                }
-            }
+            // Both rolls use the pre-exchange state. A dying unit still deals its damage;
+            // the shared resolver has already adjusted a mutually lethal exchange.
+            if (damage.attackerDealt > 0) defender.takeDamage(damage.attackerDealt, attackRecorder)
+            if (damage.defenderDealt > 0) attacker.takeDamage(damage.defenderDealt, attackRecorder)
         }
 
         val defenderDamageDealt = attackerHealthBefore - attacker.getHealth()

@@ -262,11 +262,12 @@ class BattleTable(val worldScreen: WorldScreen) : Table() {
             }
             add(defeatedText.toLabel())
         } else {
-            var maxDamageToDefender = ordinaryPreview?.maxDamageToDefender ?: BattleDamage.calculateDamageToDefender(attacker, defender, tileToAttackFrom, 1f)
-            var minDamageToDefender = ordinaryPreview?.minDamageToDefender ?: BattleDamage.calculateDamageToDefender(attacker, defender, tileToAttackFrom, 0f)
+            val damageRange = if (ordinaryPreview == null) BattleDamage.damageRange(attacker, defender, tileToAttackFrom) else null
+            var maxDamageToDefender = ordinaryPreview?.maxDamageToDefender ?: damageRange!!.maxDamageToDefender
+            var minDamageToDefender = ordinaryPreview?.minDamageToDefender ?: damageRange!!.minDamageToDefender
 
-            val maxDamageToAttacker = ordinaryPreview?.maxDamageToAttacker ?: BattleDamage.calculateDamageToAttacker(attacker, defender, tileToAttackFrom, 1f)
-            val minDamageToAttacker = ordinaryPreview?.minDamageToAttacker ?: BattleDamage.calculateDamageToAttacker(attacker, defender, tileToAttackFrom, 0f)
+            val maxDamageToAttacker = ordinaryPreview?.maxDamageToAttacker ?: damageRange!!.maxDamageToAttacker
+            val minDamageToAttacker = ordinaryPreview?.minDamageToAttacker ?: damageRange!!.minDamageToAttacker
 
             if (attacker is MapUnitCombatant && defender is MapUnitCombatant && attacker.unit.hasUnique(UniqueType.ExtraRangedAttack)) {
                 add("Will perform an extra ranged attack".toLabel(fontSize = 16).apply { wrap = true }).width(quarterScreen)

@@ -380,7 +380,7 @@ class AttackEventsViewBoundaryTest {
         private const val cachedGameContextClass = "com/unciv/models/ruleset/unique/GameContext"
         private const val serializedStateInterface = "com/unciv/logic/IsPartOfGameInfoSerialization"
         private val attackRecorderType = Regex("${Regex.escape(attackRecorderClass)}(?![A-Za-z0-9_])")
-        private val combatEntryPoints = setOf("${battlePackage}Battle.attack", "${battlePackage}Nuke.NUKE",
+        private val combatEntryPoints = setOf("${battlePackage}Battle.attackWithResult", "${battlePackage}Nuke.nukeWithResult",
             "${battlePackage}AirInterception.airSweep")
         private val trustedOperationCallers = mapOf(
             "$gameInfoClass.storeAttack" to combatEntryPoints + "${battlePackage}BattleUnitCapture.publishCaptureNotification",
